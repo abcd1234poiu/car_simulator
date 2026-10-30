@@ -120,9 +120,43 @@
   gap: 8px;
 }
 
+.drive-settings {
+  position: absolute;
+  z-index: 10;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(8, 13, 21, 0.84);
+  backdrop-filter: blur(18px);
+  white-space: nowrap;
+}
+
+.setting-group { display: flex; gap: 2px; }
+.drive-settings button {
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.drive-settings button:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.drive-settings button.is-active { color: #04120f; background: var(--accent); }
+.drive-settings .setting-toggle { border: 1px solid var(--line-strong); }
+.drive-settings .setting-toggle.is-danger { color: #ff9aa3; border-color: rgba(255,77,94,0.5); background: rgba(255,77,94,0.12); }
+
 .toast {
   position: absolute;
-  top: 92px;
+  top: 130px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
@@ -161,7 +195,7 @@
 
 .offroad-alert {
   position: absolute;
-  top: 132px;
+  top: 168px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 18;
@@ -223,7 +257,7 @@
 }
 
 .touch-controls {
-  display: none;
+  display: flex;
   position: absolute;
   left: 0;
   right: 0;
@@ -241,6 +275,10 @@
   gap: 10px;
   pointer-events: auto;
 }
+
+.touch-steering { display: none; }
+.pedal-area { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-left: auto; pointer-events: auto; }
+.pedal-hint { font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.09em; color: var(--muted-2); }
 
 .touch-button {
   display: flex;
@@ -266,6 +304,11 @@
   transform: scale(0.95);
   background: rgba(255, 255, 255, 0.16);
 }
+.touch-pedal { position: relative; flex-direction: column; gap: 3px; overflow: hidden; }
+.touch-pedal:active { transform: none; }
+.pedal-level-fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--pedal-fill); pointer-events: none; transition: height 0.04s linear; }
+.touch-pedal-label, .touch-pedal-percent { position: relative; z-index: 1; pointer-events: none; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.touch-pedal-percent { font-size: 12px; letter-spacing: 0; color: var(--text); }
 
 .touch-steer {
   width: 62px;
@@ -274,6 +317,7 @@
 }
 
 .touch-gas {
+  --pedal-fill: rgba(52, 225, 200, 0.55);
   width: 74px;
   height: 82px;
   color: #a9fff2;
@@ -282,11 +326,21 @@
 }
 
 .touch-brake {
+  --pedal-fill: rgba(255, 77, 94, 0.53);
   width: 62px;
   height: 68px;
   color: #ffb7bd;
   border-color: rgba(255, 77, 94, 0.4);
   background: rgba(255, 77, 94, 0.12);
+}
+
+.touch-clutch {
+  --pedal-fill: rgba(124, 140, 255, 0.53);
+  width: 68px;
+  height: 72px;
+  color: #b8c6ff;
+  border-color: rgba(124, 140, 255, 0.46);
+  background: rgba(124, 140, 255, 0.13);
 }
 
 .touch-shifters {
@@ -377,9 +431,7 @@
 }
 
 @media (hover: none), (pointer: coarse) {
-  .touch-controls {
-    display: flex;
-  }
+  .touch-steering { display: flex; }
 
   .drive-hints {
     display: none;
@@ -391,6 +443,8 @@
     display: flex;
     bottom: 210px;
   }
+
+  .touch-steering { display: flex; }
 
   .drive-hints {
     display: none;
@@ -413,12 +467,12 @@
   }
 
   .toast {
-    top: 76px;
+    top: 118px;
     font-size: 11px;
   }
 
   .offroad-alert {
-    top: 112px;
+    top: 155px;
   }
 
   .pause-card {
@@ -427,6 +481,10 @@
 }
 
 @media (max-width: 620px) {
+  .drive-settings { top: 62px; gap: 3px; padding: 4px; }
+  .drive-settings button { padding: 6px 5px; font-size: 8px; letter-spacing: 0; }
+  .toast { top: 105px; }
+  .offroad-alert { top: 143px; }
   .ghost-button {
     padding: 9px 11px;
     font-size: 11px;
@@ -456,9 +514,15 @@
     padding: 0 14px;
   }
 
+  .touch-cluster { gap: 5px; }
+  .pedal-hint { display: none; }
+  .touch-cluster-right { position: relative; }
+  .touch-shifters { position: absolute; right: 0; bottom: 82px; flex-direction: row; }
+  .touch-shift { width: 34px; height: 34px; }
+
   .touch-steer {
-    width: 56px;
-    height: 56px;
+    width: 50px;
+    height: 50px;
   }
 
   .touch-gas {
@@ -467,9 +531,11 @@
   }
 
   .touch-brake {
-    width: 56px;
+    width: 50px;
     height: 62px;
   }
+
+  .touch-clutch { width: 53px; height: 62px; font-size: 8px; }
 
   .controls-grid {
     grid-template-columns: minmax(0, 1fr);

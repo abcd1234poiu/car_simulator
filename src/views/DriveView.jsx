@@ -17,7 +17,10 @@ const CONTROL_ROWS = [
   ['W / ↑', 'Throttle'],
   ['S / ↓', 'Brake'],
   ['A D / ← →', 'Steer'],
-  ['E / Q', 'Shift up / down'],
+  ['C + E / Q', 'Clutch + shift (manual)'],
+  ['G', 'Switch D / M (automatic)'],
+  ['1 / 2 / 3', 'Eco / Normal / Sport'],
+  ['T', 'Traction control on / off'],
   ['Space', 'Handbrake'],
   ['R', 'Reset run'],
   ['P / Esc', 'Pause'],
@@ -39,6 +42,9 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
     reset,
     setTouch,
     requestShift,
+    setDriveMode,
+    toggleTractionControl,
+    toggleGearboxMode,
   } = useDrivingSession({
     car,
     engine,
@@ -118,10 +124,33 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
         <div className="offroad-alert">OFF ROAD — GRIP &amp; SPEED REDUCED</div>
       )}
 
+      <div className="drive-settings" aria-label="Drive settings">
+        <div className="setting-group" role="group" aria-label="Driving mode">
+          {['eco', 'normal', 'sport'].map((mode) => (
+            <button key={mode} type="button" className={telemetry.driveMode === mode ? 'is-active' : ''}
+              onClick={() => setDriveMode(mode)} aria-pressed={telemetry.driveMode === mode}>
+              {mode}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={`setting-toggle ${!telemetry.tractionControl ? 'is-danger' : ''}`}
+          onClick={toggleTractionControl} aria-pressed={!telemetry.tractionControl}>
+          TSC {telemetry.tractionControl ? 'ON' : 'OFF'}
+        </button>
+        {transmission.type !== 'manual' && (
+          <button type="button" className="setting-toggle" onClick={toggleGearboxMode}
+            aria-label={`Gearbox ${telemetry.gearboxMode} mode. Switch to ${telemetry.gearboxMode === 'D' ? 'manual' : 'drive'} mode`}>
+            {telemetry.gearboxMode === 'D' ? 'D · AUTO' : 'M · MANUAL'}
+          </button>
+        )}
+      </div>
+
       <TouchControls
         setTouch={setTouch}
         requestShift={requestShift}
-        transmission={transmission}
+        gearboxMode={telemetry.gearboxMode}
+        manualClutch={transmission.type === 'manual'}
+        telemetry={telemetry}
       />
 
       <div className="drive-bottom">

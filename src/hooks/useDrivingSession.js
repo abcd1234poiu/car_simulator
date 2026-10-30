@@ -26,19 +26,37 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
 
   const requestShift = useCallback(
     (direction) => {
-      if (transmission.type !== 'manual') {
-        notify('Automatic gearbox — shifts are handled for you', 'info')
-        return
-      }
       const result = direction === 'up' ? physics.shiftUp() : physics.shiftDown()
       if (result.ok) {
         setShiftPulse((value) => value + 1)
+        setTelemetry(physics.snapshot())
       } else {
         notify(result.message, 'warn')
       }
     },
-    [physics, transmission.type, notify],
+    [physics, notify],
   )
+
+  const setDriveMode = useCallback((mode) => {
+    if (physics.setDriveMode(mode)) {
+      setTelemetry(physics.snapshot())
+      notify(`${mode.toUpperCase()} mode`, 'info')
+    }
+  }, [physics, notify])
+
+  const toggleTractionControl = useCallback(() => {
+    physics.setTractionControl(!physics.tractionControl)
+    setTelemetry(physics.snapshot())
+    notify(physics.tractionControl ? 'Traction control on' : 'TSC OFF — wheelspin possible',
+      physics.tractionControl ? 'info' : 'warn')
+  }, [physics, notify])
+
+  const toggleGearboxMode = useCallback(() => {
+    if (physics.setGearboxMode(physics.gearboxMode === 'D' ? 'M' : 'D')) {
+      setTelemetry(physics.snapshot())
+      notify(physics.gearboxMode === 'D' ? 'Drive mode — automatic shifting' : 'Manual shift mode', 'info')
+    }
+  }, [physics, notify])
 
   const togglePause = useCallback(() => {
     setPaused((value) => !value)
@@ -73,9 +91,12 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
       onReset: reset,
       onMute: () => onToggleMute?.(),
       onShift: requestShift,
+      onGearboxMode: toggleGearboxMode,
+      onDriveMode: setDriveMode,
+      onTractionControl: toggleTractionControl,
     })
     return () => input.detach()
-  }, [input, togglePause, reset, onToggleMute, requestShift])
+  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, setDriveMode, toggleTractionControl])
 
   // Pause automatically when the tab loses focus.
   useEffect(() => {
@@ -103,7 +124,13 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
       const snapshot = physics.update(dt, input.update(dt))
       if (snapshot.shiftEvent) setShiftPulse((value) => value + 1)
 
-      audio?.update({ rpm: snapshot.rpm, throttle: snapshot.throttle })
+      audio?.update({
+        rpm: snapshot.rpm,
+        throttle: snapshot.throttle,
+        boost: snapshot.boost,
+        limiter: snapshot.limiter,
+        shiftEvent: snapshot.shiftEvent,
+      })
       sceneRef.current?.update(dt, snapshot)
 
       uiClock += dt
@@ -126,5 +153,8 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     reset,
     setTouch,
     requestShift,
+    setDriveMode,
+    toggleTractionControl,
+    toggleGearboxMode,
   }
 }

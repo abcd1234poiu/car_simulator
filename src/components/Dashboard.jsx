@@ -27,7 +27,7 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
   const litLights = Math.round(
     Math.max(0, (rpmFraction - 0.55) / 0.45) * SHIFT_LIGHTS,
   )
-  const automatic = transmission.type === 'automatic'
+  const automatic = telemetry.gearboxMode === 'D'
 
   return (
     <section className="dashboard" aria-label="Driving dashboard">
@@ -40,15 +40,15 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           <span className="chip chip-engine">{engine.badge}</span>
           <span className="chip">{car.drivetrain}</span>
         </div>
-        <div className="dash-mode">{automatic ? 'AUTOMATIC' : 'MANUAL'}</div>
+        <div className="dash-mode">{transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {automatic ? 'DRIVE' : 'MANUAL'}</div>
       </div>
 
       <div className="dash-gauges">
         <Gauge
           value={telemetry.speedKmh ?? 0}
-          max={300}
-          redline={260}
-          majorStep={50}
+          max={360}
+          redline={320}
+          majorStep={60}
           label="SPEED"
           unit="km/h"
           displayValue={String(Math.round(telemetry.speedKmh ?? 0))}
@@ -77,11 +77,15 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
             <span className="gear-total">/ {telemetry.gearCount ?? transmission.gearRatios.length}</span>
           </div>
           <div className="gear-caption">
-            {automatic ? 'GEAR · AUTO' : 'GEAR · E / Q TO SHIFT'}
+            {telemetry.shiftActive ? `${transmission.shortName.toUpperCase()} · SHIFTING` :
+              transmission.type === 'cvt' && automatic ? 'CVT · VIRTUAL RATIO' :
+                automatic ? `${transmission.shortName.toUpperCase()} · AUTO` :
+                  'GEAR · E / Q TO SHIFT'}
           </div>
 
           <div className="dash-pedals">
             <Pedal label="THR" value={telemetry.throttle ?? 0} tone="throttle" />
+            {transmission.type === 'manual' && <Pedal label="CLT" value={telemetry.clutch ?? 0} tone="clutch" />}
             <Pedal label="BRK" value={telemetry.brake ?? 0} tone="brake" />
           </div>
         </div>
@@ -117,6 +121,12 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           <span className="stat-value">
             {Math.round(telemetry.maxSpeedKmh ?? 0)}
             <small>km/h</small>
+          </span>
+        </div>
+        <div className="stat stat-status">
+          <span className="stat-label">System</span>
+          <span className={`stat-value status-value ${telemetry.tractionLimited ? 'is-active' : ''}`}>
+            {telemetry.tractionControl ? (telemetry.tractionLimited ? 'TSC ACTIVE' : 'TSC ON') : 'TSC OFF'}
           </span>
         </div>
       </div>

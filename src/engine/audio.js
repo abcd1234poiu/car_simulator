@@ -36,6 +36,8 @@ export class EngineAudio {
     this.muted = false
     this.previewFrame = null
     this.volume = 0.8
+    this.workletNode = null
+    this.lastState = null
   }
 
   ensureContext() {
@@ -47,6 +49,13 @@ export class EngineAudio {
 
     const master = ctx.createGain()
     master.gain.value = 0
+
+    const fallbackGain = ctx.createGain()
+    fallbackGain.gain.value = 1
+    fallbackGain.connect(master)
+    const workletGain = ctx.createGain()
+    workletGain.gain.value = 0
+    workletGain.connect(master)
 
     const compressor = ctx.createDynamicsCompressor()
     compressor.threshold.value = -20
@@ -76,7 +85,7 @@ export class EngineAudio {
     engineGain.connect(drive)
     drive.connect(filter)
     filter.connect(tremolo)
-    tremolo.connect(master)
+    tremolo.connect(fallbackGain)
 
     const osc1 = ctx.createOscillator()
     osc1.type = 'sawtooth'
@@ -101,6 +110,13 @@ export class EngineAudio {
     sub.connect(subGain)
     subGain.connect(engineGain)
 
+    const whine = ctx.createOscillator()
+    whine.type = 'sine'
+    const whineGain = ctx.createGain()
+    whineGain.gain.value = 0
+    whine.connect(whineGain)
+    whineGain.connect(fallbackGain)
+
     const lfo = ctx.createOscillator()
     lfo.type = 'sine'
     lfo.frequency.value = 24
@@ -120,18 +136,22 @@ export class EngineAudio {
     noiseGain.gain.value = 0
     noise.connect(noiseFilter)
     noiseFilter.connect(noiseGain)
-    noiseGain.connect(master)
+    noiseGain.connect(fallbackGain)
 
     osc1.start()
     osc2.start()
     sub.start()
+    whine.start()
     lfo.start()
     noise.start()
 
     this.context = ctx
     this.nodes = {
       master,
+      fallbackGain,
+      workletGain,
       engineGain,
+      drive,
       filter,
       tremolo,
       lfo,
@@ -143,10 +163,35 @@ export class EngineAudio {
       noiseGain,
       osc2Gain,
       subGain,
+      whine,
+      whineGain,
     }
     this.applyMasterGain(0)
+    this.loadWorklet(ctx)
 
     return ctx
+  }
+
+  async loadWorklet(ctx) {
+    if (!ctx.audioWorklet || !window.AudioWorkletNode) return
+    try {
+      await ctx.audioWorklet.addModule(new URL('./combustion-worklet.js', import.meta.url))
+      if (this.context !== ctx || !this.nodes) return
+      const node = new window.AudioWorkletNode(ctx, 'combustion-engine', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+      })
+      node.connect(this.nodes.workletGain)
+      this.workletNode = node
+      this.configureVoice()
+      if (this.lastState) this.update(this.lastState)
+      const now = ctx.currentTime
+      this.nodes.workletGain.gain.setTargetAtTime(1, now, 0.1)
+      this.nodes.fallbackGain.gain.setTargetAtTime(0, now, 0.1)
+    } catch (error) {
+      console.warn('Combustion audio unavailable; using oscillator fallback', error)
+    }
   }
 
   applyMasterGain(value, timeConstant = 0.12) {
@@ -159,6 +204,22 @@ export class EngineAudio {
 
   setEngine(engine) {
     this.engine = engine
+    this.configureVoice()
+  }
+
+  configureVoice() {
+    if (!this.nodes || !this.engine) return
+    const { sound } = this.engine
+    const profile = sound.profile
+    this.nodes.osc1.type = profile === 'quiet' || profile === 'smooth' ? 'triangle' :
+      profile === 'muscle' || profile === 'supercharged' ? 'square' : 'sawtooth'
+    this.nodes.osc2.type = profile === 'quiet' ? 'sine' :
+      profile === 'vtec' || profile === 'twin-turbo' ? 'sawtooth' : 'triangle'
+    this.nodes.drive.curve = createDriveCurve(sound.drive)
+    this.workletNode?.port.postMessage({
+      type: 'engine', profile, cylinders: this.engine.cylinders,
+      maxRpm: this.engine.maxRpm, volume: sound.volume,
+    })
   }
 
   start(engine) {
@@ -166,6 +227,7 @@ export class EngineAudio {
     if (!this.engine) return false
     const ctx = this.ensureContext()
     if (!ctx) return false
+    this.configureVoice()
 
     this.stopPreview()
     this.started = true
@@ -198,11 +260,20 @@ export class EngineAudio {
     }
   }
 
-  update({ rpm = 900, throttle = 0 }) {
+  update({ rpm = 900, throttle = 0, boost = 0, limiter = false, shiftEvent = null }) {
     if (!this.started || !this.context || !this.engine || !this.nodes) return
+    this.lastState = { rpm, throttle, boost, limiter }
     const nodes = this.nodes
     const now = this.context.currentTime
     const sound = this.engine.sound
+
+    if (this.workletNode) {
+      this.workletNode.parameters.get('rpm').setTargetAtTime(clamp(rpm, 300, 12000), now, 0.025)
+      this.workletNode.parameters.get('throttle').setTargetAtTime(clamp(throttle, 0, 1), now, 0.035)
+      this.workletNode.parameters.get('boost').setTargetAtTime(clamp(boost, 0, 1), now, 0.055)
+      this.workletNode.parameters.get('limiter').setTargetAtTime(limiter ? 1 : 0, now, 0.012)
+      if (shiftEvent) this.workletNode.port.postMessage({ type: 'shift', direction: shiftEvent })
+    }
 
     const safeRpm = clamp(rpm, 400, 12000)
     const firing = (safeRpm / 60) * (this.engine.cylinders / 2)
@@ -213,20 +284,30 @@ export class EngineAudio {
     nodes.osc1.frequency.setTargetAtTime(base, now, 0.03)
     nodes.osc2.frequency.setTargetAtTime(base * sound.harmonic, now, 0.03)
     nodes.sub.frequency.setTargetAtTime(base * 0.5, now, 0.04)
-    nodes.osc2Gain.gain.setTargetAtTime(0.1 + load * 0.12, now, 0.05)
-    nodes.subGain.gain.setTargetAtTime(0.2 + load * sound.sub, now, 0.05)
+    const highCam = sound.profile === 'vtec' && safeRpm > 5500 ? 1 : 0
+    nodes.osc2Gain.gain.setTargetAtTime((0.06 + load * 0.12 + highCam * 0.18) *
+      (sound.profile === 'quiet' ? 0.35 : 1), now, 0.05)
+    nodes.subGain.gain.setTargetAtTime((sound.profile === 'quiet' ? 0.055 : 0.2) + load * sound.sub, now, 0.05)
     nodes.lfo.frequency.setTargetAtTime(sound.lfoRate + revRatio * 22, now, 0.1)
     nodes.lfoGain.gain.setTargetAtTime(0.04 + load * 0.05, now, 0.1)
 
-    const engineLevel = (0.055 + load * 0.14 + revRatio * 0.05) * sound.volume
+    const engineLevel = (0.045 + load * 0.15 + revRatio * 0.06 + highCam * 0.035) * sound.volume
     nodes.engineGain.gain.setTargetAtTime(engineLevel, now, 0.045)
 
     const cutoff = clamp(360 + base * 6.5 + load * 2400 + revRatio * 900, 400, 8000)
-    nodes.filter.frequency.setTargetAtTime(cutoff * sound.brightness, now, 0.05)
+    nodes.filter.frequency.setTargetAtTime(cutoff * sound.brightness * (1 + highCam * 0.35), now, 0.05)
     nodes.filter.Q.setTargetAtTime(1.1 + load * 1.4, now, 0.08)
 
     nodes.noiseFilter.frequency.setTargetAtTime(clamp(base * 4 + 240, 220, 3800), now, 0.06)
     nodes.noiseGain.gain.setTargetAtTime((0.01 + load * 0.05) * sound.noise, now, 0.06)
+    const forced = ['turbo', 'twin-turbo', 'supercharged'].includes(sound.profile)
+    const whineLevel = sound.profile === 'supercharged' ? 0.07 :
+      sound.profile === 'twin-turbo' ? 0.045 : 0.028
+    nodes.whine.frequency.setTargetAtTime(
+      sound.profile === 'supercharged' ? 280 + safeRpm * 0.22 : 620 + safeRpm * 0.12,
+      now, 0.04)
+    nodes.whineGain.gain.setTargetAtTime(forced ? whineLevel * load *
+      (sound.profile === 'supercharged' ? revRatio : clamp(boost, 0, 1)) : 0, now, 0.06)
   }
 
   /** Looping rev animation used on the car-selection screen. */
@@ -234,6 +315,7 @@ export class EngineAudio {
     this.engine = engine
     const ctx = this.ensureContext()
     if (!ctx) return false
+    this.configureVoice()
     if (ctx.state === 'suspended') ctx.resume().catch(() => {})
 
     this.stopPreview()
@@ -247,7 +329,7 @@ export class EngineAudio {
       const cycle = (t % 1.5) / 1.5
       const rev = Math.sin(cycle * Math.PI) ** 1.4
       const rpm = engine.idleRpm + rev * (engine.redline * 0.96 - engine.idleRpm)
-      this.update({ rpm, throttle: 0.15 + rev * 0.85 })
+      this.update({ rpm, throttle: 0.15 + rev * 0.85, boost: rev })
       this.previewFrame = requestAnimationFrame(tick)
     }
     this.previewFrame = requestAnimationFrame(tick)
@@ -267,6 +349,7 @@ export class EngineAudio {
       this.context.close().catch(() => {})
       this.context = null
       this.nodes = null
+      this.workletNode = null
     }
   }
 }
