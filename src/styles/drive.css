@@ -1,0 +1,481 @@
+.drive-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #05070d;
+  color: var(--text);
+}
+
+.drive-stage {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 40% at 78% 34%, rgba(255, 168, 108, 0.28), transparent 70%),
+    linear-gradient(
+      180deg,
+      #03050a 0%,
+      #071020 26%,
+      #16233d 42%,
+      #4b3349 52%,
+      #b96d4c 57%,
+      #2a2028 61%,
+      #0a0e14 70%,
+      #05070c 100%
+    );
+}
+
+.drive-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.drive-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 42%, transparent 48%, rgba(0, 0, 0, 0.5) 100%),
+    linear-gradient(180deg, rgba(3, 5, 9, 0.55) 0%, transparent 20%, transparent 60%, rgba(3, 5, 9, 0.78) 100%);
+}
+
+.scene-fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(50% 24% at 72% 46%, rgba(255, 150, 90, 0.35), transparent 70%),
+    linear-gradient(180deg, #04060c 0%, #0b1424 42%, #241f2f 52%, #0a0e14 60%, #05070c 100%);
+}
+
+.scene-fallback::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -18%;
+  width: 160%;
+  height: 62%;
+  transform: translateX(-50%) perspective(420px) rotateX(58deg);
+  background:
+    linear-gradient(90deg, transparent 0 46.4%, rgba(255, 255, 255, 0.35) 46.4% 46.9%, transparent 46.9% 53.1%, rgba(255, 255, 255, 0.35) 53.1% 53.6%, transparent 53.6%),
+    repeating-linear-gradient(0deg, #1c2027 0 26px, transparent 26px 52px);
+  opacity: 0.7;
+}
+
+.drive-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+}
+
+.drive-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drive-car {
+  position: relative;
+  padding-left: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.drive-car::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--car-color, var(--accent));
+  box-shadow: 0 0 12px var(--car-color, var(--accent));
+}
+
+.drive-config {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.drive-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.toast {
+  position: absolute;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(8, 13, 21, 0.92);
+  backdrop-filter: blur(16px);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  animation: toast-in 0.24s ease;
+  box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.9);
+}
+
+.toast-info {
+  color: #a9fff2;
+  border-color: rgba(52, 225, 200, 0.36);
+}
+
+.toast-warn {
+  color: #ffd38a;
+  border-color: rgba(255, 176, 32, 0.45);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.offroad-alert {
+  position: absolute;
+  top: 132px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 18;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 77, 94, 0.45);
+  background: rgba(40, 8, 13, 0.78);
+  color: #ff9aa3;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  animation: offroad-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes offroad-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.drive-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px 20px;
+  pointer-events: none;
+}
+
+.drive-bottom > * {
+  pointer-events: auto;
+}
+
+.drive-hints {
+  display: flex;
+  gap: 15px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(6, 10, 17, 0.55);
+  backdrop-filter: blur(14px);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(214, 226, 241, 0.62);
+}
+
+.drive-hints kbd {
+  margin-right: 4px;
+}
+
+.touch-controls {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 208px;
+  z-index: 9;
+  padding: 0 20px;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.touch-cluster {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.touch-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 16, 26, 0.6);
+  backdrop-filter: blur(16px);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.9);
+}
+
+.touch-button:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.touch-steer {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+}
+
+.touch-gas {
+  width: 74px;
+  height: 82px;
+  color: #a9fff2;
+  border-color: rgba(52, 225, 200, 0.5);
+  background: rgba(52, 225, 200, 0.14);
+}
+
+.touch-brake {
+  width: 62px;
+  height: 68px;
+  color: #ffb7bd;
+  border-color: rgba(255, 77, 94, 0.4);
+  background: rgba(255, 77, 94, 0.12);
+}
+
+.touch-shifters {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-right: 2px;
+}
+
+.touch-shift {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 6, 11, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.pause-card {
+  width: min(560px, 100%);
+  padding: 30px;
+  border-radius: 24px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(160deg, #0e1520, #070b12);
+  box-shadow: 0 50px 120px -30px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: pause-in 0.28s ease;
+}
+
+@keyframes pause-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pause-card h2 {
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 12px 0 22px;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 20px;
+  margin-bottom: 24px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 11.5px;
+}
+
+.control-keys {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.control-action {
+  color: var(--text);
+}
+
+.pause-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+
+  .drive-hints {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .touch-controls {
+    display: flex;
+    bottom: 210px;
+  }
+
+  .drive-hints {
+    display: none;
+  }
+
+  .drive-top {
+    padding: 12px 14px;
+  }
+
+  .drive-car {
+    font-size: 13px;
+  }
+
+  .drive-config {
+    font-size: 8px;
+  }
+
+  .drive-bottom {
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .toast {
+    top: 76px;
+    font-size: 11px;
+  }
+
+  .offroad-alert {
+    top: 112px;
+  }
+
+  .pause-card {
+    padding: 22px;
+  }
+}
+
+@media (max-width: 620px) {
+  .ghost-button {
+    padding: 9px 11px;
+    font-size: 11px;
+  }
+
+  .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .drive-title {
+    max-width: 45vw;
+  }
+
+  .drive-car {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drive-config {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .touch-controls {
+    bottom: 200px;
+    padding: 0 14px;
+  }
+
+  .touch-steer {
+    width: 56px;
+    height: 56px;
+  }
+
+  .touch-gas {
+    width: 66px;
+    height: 74px;
+  }
+
+  .touch-brake {
+    width: 56px;
+    height: 62px;
+  }
+
+  .controls-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pause-actions {
+    gap: 8px;
+  }
+}

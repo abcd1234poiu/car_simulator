@@ -1,0 +1,73 @@
+:root {
+  --bg: #05070c;
+  --bg-soft: #0a0f18;
+  --panel: rgba(13, 19, 30, 0.8);
+  --panel-strong: #0b111b;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #e9f0fb;
+  --muted: #8b99ad;
+  --muted-2: #66738a;
+  --accent: #34e1c8;
+  --accent-2: #7c8cff;
+  --danger: #ff4d5e;
+  --warn: #ffb020;
+  --font-ui: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+svg {
+  display: block;
+}
+
+::selection {
+  background: rgba(52, 225, 200, 0.28);
+  color: #ffffff;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(52, 225, 200, 0.7);
+  outline-offset: 2px;
+}
