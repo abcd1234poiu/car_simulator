@@ -273,6 +273,9 @@
 .pedal-brake .pedal-fill {
   background: linear-gradient(180deg, #ff7a85, #b8111f);
 }
+.pedal-clutch .pedal-fill {
+  background: linear-gradient(180deg, #b8c6ff, #5966bf);
+}
 
 .pedal-value {
   font-family: var(--font-mono);
@@ -317,6 +320,8 @@
   margin-left: 3px;
   letter-spacing: 0.04em;
 }
+.status-value { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; }
+.status-value.is-active { color: var(--accent); }
 
 @media (max-width: 1180px) {
   .dashboard {
@@ -331,7 +336,7 @@
 
   .dash-stats {
     flex-direction: row;
-    gap: 18px;
+    gap: 12px;
     padding-left: 16px;
     border-left: 1px solid var(--line);
   }
@@ -369,6 +374,8 @@
     border-left: none;
     border-top: 1px solid var(--line);
   }
+
+  .stat-status { display: none; }
 
   .stat {
     align-items: center;

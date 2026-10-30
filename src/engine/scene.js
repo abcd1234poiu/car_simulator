@@ -268,13 +268,6 @@ function createCarModel(car) {
     metalness: 0.5,
     roughness: 0.28,
   })
-  const accentMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(car.accent),
-    metalness: 0.5,
-    roughness: 0.3,
-    emissive: new THREE.Color(car.accent),
-    emissiveIntensity: 0.08,
-  })
   const glassMaterial = new THREE.MeshStandardMaterial({
     color: 0x0a101a,
     metalness: 0.85,

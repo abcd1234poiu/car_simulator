@@ -24,9 +24,8 @@ function createTestVehicle(car, engine, transmission) {
     engine,
     transmission: {
       ...transmission,
-      type: 'automatic',
-      shiftUpFraction: 0.94,
-      shiftDownFraction: 0.3,
+      type: transmission.type === 'manual' ? 'automatic' : transmission.type,
+      shiftUpFraction: transmission.type === 'manual' ? 0.94 : transmission.shiftUpFraction,
     },
   })
 }

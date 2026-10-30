@@ -294,8 +294,8 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
               <ChevronRight size={20} />
             </button>
             <p className="start-hint">
-              Sound on for the full experience · WASD or arrow keys · Touch controls on
-              mobile
+              Sound on for the full experience · WASD or arrow keys · Click or drag pedals
+              on any device
             </p>
           </div>
         </aside>
