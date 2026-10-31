@@ -1,0 +1,52 @@
+.dispatch-trigger { position: relative; }
+.dispatch-trigger.has-alert::after { content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: #f9c86a; box-shadow: 0 0 9px #f9c86a; }
+.taxi-mission { position: absolute; z-index: 7; top: 146px; left: 22px; width: 244px; overflow: hidden; border: 1px solid rgba(144, 213, 218, .2); border-radius: 18px; background: rgba(6, 18, 27, .91); backdrop-filter: blur(18px); box-shadow: 0 16px 45px rgba(0, 0, 0, .38); }
+.mission-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 12px; font: 700 9px var(--font-mono); color: #b6d7da; letter-spacing: .04em; }
+.mission-head span { display: flex; align-items: center; gap: 5px; color: #66e7d1; }
+.mission-head strong { font-weight: 600; white-space: nowrap; }
+.taxi-map { position: relative; width: 100%; height: 188px; overflow: hidden; background: #0c1e2a; }
+.taxi-map svg { width: 100%; height: 100%; }
+.taxi-map-compact { height: 155px; }
+.taxi-map-legend { position: absolute; bottom: 6px; left: 6px; right: 6px; display: flex; justify-content: center; gap: 9px; padding: 5px 4px; border-radius: 6px; background: rgba(4, 17, 25, .86); font: 700 8px var(--font-mono); color: #e0edef; }
+.taxi-map-legend span { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.map-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+.map-you { background: #69bbff; }.map-pickup { background: #f9c86a; }.map-dropoff { background: #fb7185; }
+.mission-target { display: flex; flex-direction: column; gap: 3px; padding: 11px 13px 13px; }
+.mission-target small { font: 700 9px var(--font-mono); letter-spacing: .12em; color: #65e7d0; }
+.mission-target strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.mission-target > span { font-size: 11px; color: #b5c6d1; }
+.dispatch-phone { display: none; position: absolute; z-index: 15; right: 22px; top: 88px; width: 320px; max-height: min(690px, calc(100vh - 120px)); flex-direction: column; overflow: hidden; padding: 9px; border: 2px solid #293a47; border-radius: 28px; background: #08141e; box-shadow: 0 30px 75px rgba(0,0,0,.7), inset 0 0 0 2px #05101a; }
+.dispatch-phone.is-open { display: flex; }
+.phone-speaker { align-self: center; width: 46px; height: 4px; margin: 1px 0 11px; border-radius: 4px; background: #314653; }
+.phone-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 0 10px 12px; }
+.phone-header > div { display: flex; flex-direction: column; gap: 3px; }
+.phone-app-name { display: flex; align-items: center; gap: 5px; font: 800 10px var(--font-mono); letter-spacing: .1em; color: #66e7d1; }
+.phone-header strong { font-size: 19px; letter-spacing: -.03em; }
+.phone-close { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #1c2b36; color: #c2d0d4; }
+.phone-close:hover { background: #344c5a; }
+.phone-screen-body { overflow-y: auto; min-height: 0; border-radius: 12px; background: #0d1c26; }
+.phone-ticket-id { display: flex; justify-content: space-between; padding: 10px 11px; font: 800 9px var(--font-mono); letter-spacing: .1em; color: #9bb7c1; }
+.phone-ticket-id span:last-child { color: #f7c66b; }
+.phone-passenger { display: flex; align-items: center; gap: 9px; padding: 11px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.passenger-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; color: #10242d; background: #91dacf; font-weight: 800; }
+.phone-passenger > div { display: flex; flex-direction: column; line-height: 1.25; }
+.phone-passenger small, .phone-route small { font: 700 9px var(--font-mono); color: #7f9ca8; letter-spacing: .09em; }
+.phone-passenger strong { font-size: 14px; }
+.fare-pill { margin-left: auto; padding: 6px 8px; border-radius: 7px; color: #a9f2d5; background: #153a35; font: 800 11px var(--font-mono); white-space: nowrap; }
+.phone-route { padding: 12px 14px 3px; }
+.phone-route > div { display: flex; gap: 12px; min-height: 47px; }
+.phone-route > div > span { display: flex; flex-direction: column; }
+.phone-route strong { font-size: 12px; line-height: 1.25; }
+.route-dot { position: relative; width: 10px; height: 10px; flex: 0 0 10px; margin-top: 4px; border-radius: 50%; }
+.route-dot.pickup { background: #f9c86a; }.route-dot.dropoff { background: #fb7185; }
+.phone-route > div:first-child .route-dot::after { content: ''; position: absolute; left: 4px; top: 12px; height: 30px; border-left: 2px dashed #60747a; }
+.phone-guidance { padding: 0 14px 14px; color: #aac0c9; font-size: 11px; line-height: 1.45; }
+.phone-footer { display: flex; gap: 8px; padding: 10px 3px 2px; }
+.phone-footer button { display: flex; justify-content: center; align-items: center; gap: 5px; min-height: 40px; border-radius: 9px; font-size: 12px; font-weight: 800; }
+.phone-primary { flex: 1; background: #5fe5c9; color: #08231f; }.phone-primary:hover { background: #9bffe9; }
+.phone-secondary { width: 72px; background: #20313c; color: #d6e3e7; }.phone-secondary:hover { background: #344a56; }
+.phone-active-note { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 38px; font-size: 10px; color: #94cfc4; }
+@media (max-width: 900px) { .taxi-mission { top: 116px; left: 10px; width: 192px; } .taxi-map-compact { height: 116px; } .mission-head { font-size: 8px; } .dispatch-phone { right: 10px; top: 101px; width: min(310px, calc(100vw - 20px)); max-height: calc(100vh - 230px); } }
+@media (max-width: 620px) { .taxi-mission { top: 102px; width: 166px; } .mission-head { flex-direction: column; align-items: flex-start; padding: 7px 9px; } .taxi-map-compact { height: 96px; } .taxi-map-compact .taxi-map-legend { gap: 4px; font-size: 7px; } .mission-target { padding: 8px 9px; } .mission-target strong { font-size: 11px; } .mission-target small, .mission-target > span { font-size: 8px; } .dispatch-phone { top: 100px; max-height: calc(100vh - 380px); } .dispatch-phone .taxi-map { height: 130px; } .phone-header strong { font-size: 16px; } }
+@media (max-height: 650px) and (min-width: 621px) { .dispatch-phone { max-height: calc(100vh - 110px); } .dispatch-phone .taxi-map { height: 110px; } }
+@media (max-height: 480px) and (max-width: 620px) { .dispatch-phone { top: 62px; max-height: calc(100vh - 72px); } .dispatch-phone .taxi-map { display: none; } }
