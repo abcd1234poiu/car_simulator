@@ -9,6 +9,7 @@ const DRIVETRAIN_EFFICIENCY = 0.88
 const MAX_STEP = 0.05
 const ROAD_EDGE = 5.05
 const SHOULDER_EDGE = 8.2
+const REVERSE_SPEED_LIMIT = 8.33 // m/s, about 30 km/h
 // The right-hand lane centre sits this far from the road's painted centre line.
 const LANE_OFFSET = 1.9
 const DRIVE_MODES = {
@@ -58,6 +59,7 @@ export class VehiclePhysics {
     this.lateral = LANE_OFFSET
     this.lateralVelocity = 0
     this.distance = 0
+    this.odometer = 0
     this.elapsed = 0
     this.maxSpeed = 0
     this.gear = 1
@@ -85,8 +87,50 @@ export class VehiclePhysics {
   }
 
   rpmForSpeed(speed, gear = this.gear) {
-    const ratio = this.transmission.gearRatios[gear - 1] * this.transmission.finalDrive
+    if (gear === 0) return 0
+    const ratio = (gear === -1 ? this.transmission.reverseRatio : this.transmission.gearRatios[gear - 1]) *
+      this.transmission.finalDrive
     return (Math.abs(speed) / this.car.wheelRadius) * ratio * (60 / (2 * Math.PI))
+  }
+
+  selectRange(range) {
+    if (!['R', 'N', 'D'].includes(range)) return { ok: false, message: 'Unknown gear range' }
+    const target = range === 'R' ? -1 : range === 'N' ? 0 : 1
+    if (this.gear === target && (range !== 'D' || this.gear === 1)) {
+      return { ok: true, message: range === 'D' && this.transmission.type === 'manual' ? 'First gear' : `${range} selected` }
+    }
+    if (this.transmission.type === 'manual' && this.clutch < 0.55) {
+      return { ok: false, message: 'Press the clutch (C) to change range' }
+    }
+    if (range === 'R' && Math.abs(this.speed) > 0.5) {
+      return { ok: false, message: 'Stop before selecting reverse' }
+    }
+    if (range === 'D' && this.speed < -0.5) {
+      return { ok: false, message: 'Stop before selecting drive' }
+    }
+    if (this.transmission.type !== 'manual' && (range === 'R' || (range === 'D' && this.gear === -1)) &&
+      this.brake < 0.25) {
+      return { ok: false, message: 'Hold the brake to change direction' }
+    }
+    if (range === 'D' && this.transmission.type === 'manual' &&
+      this.rpmForSpeed(this.speed, 1) > this.engine.redline * 0.8) {
+      return { ok: false, message: 'Too fast for first gear' }
+    }
+    this.gear = target
+    if (range === 'D' && this.transmission.type !== 'manual') {
+      while (this.gear < this.gearCount &&
+        this.rpmForSpeed(this.speed, this.gear) > this.engine.redline * 0.75) this.gear += 1
+    }
+    this.shiftTimer = 0
+    this.shiftCooldown = 0.12
+    this.shiftEvent = null
+    this.pendingShiftEvent = null
+    this.sportDownshiftPending = false
+    this.kickdownArmed = true
+    this.preselectedGear = this.transmission.kind === 'dual-clutch' && this.gear > 0
+      ? Math.min(this.gear + 1, this.gearCount) : null
+    return { ok: true, message: range === 'D' && this.transmission.type === 'manual'
+      ? 'First gear selected' : `${range} selected` }
   }
 
   setDriveMode(mode) {
@@ -153,7 +197,7 @@ export class VehiclePhysics {
   setGearboxMode(mode) {
     if (this.transmission.type === 'manual' || !['D', 'M'].includes(mode)) return false
     this.gearboxMode = mode
-    if (mode === 'M' && this.transmission.type === 'cvt') {
+    if (mode === 'M' && this.transmission.type === 'cvt' && this.gear > 0) {
       this.gear = this.closestCvtGear()
     }
     this.sportDownshiftPending = mode === 'D' && this.driveMode === 'sport' &&
@@ -175,6 +219,11 @@ export class VehiclePhysics {
     if (this.transmission.type === 'manual' && this.clutch < 0.55) {
       return { ok: false, message: 'Press the clutch (C) to shift' }
     }
+    if (this.gear <= 0) {
+      return this.transmission.type === 'manual'
+        ? this.selectRange(this.gear === -1 ? 'N' : 'D')
+        : { ok: false, message: 'Select drive before shifting' }
+    }
     if (this.gear >= this.gearCount) {
       return { ok: false, message: 'Already in top gear' }
     }
@@ -191,7 +240,9 @@ export class VehiclePhysics {
       return { ok: false, message: 'Press the clutch (C) to shift' }
     }
     if (this.gear <= 1) {
-      return { ok: false, message: 'Already in first gear' }
+      return this.transmission.type === 'manual' && this.gear >= 0
+        ? this.selectRange(this.gear === 1 ? 'N' : 'R')
+        : { ok: false, message: this.gear === -1 ? 'Already in reverse' : 'Already in first gear' }
     }
     if (this.shiftTimer > 0) return { ok: false, message: 'Shift in progress' }
     const targetGear = this.gear - 1
@@ -221,7 +272,7 @@ export class VehiclePhysics {
     this.shiftTimer = Math.max(0, this.shiftTimer - step)
     this.shiftEvent = this.pendingShiftEvent
     this.pendingShiftEvent = null
-    if (this.transmission.kind === 'dual-clutch' && this.shiftTimer <= 0) {
+    if (this.transmission.kind === 'dual-clutch' && this.shiftTimer <= 0 && this.gear > 0) {
       this.preselectedGear = clamp(this.gear +
         (throttleTarget > 0.3 && brakeTarget < 0.2 ? 1 : -1), 1, this.gearCount)
     }
@@ -237,31 +288,34 @@ export class VehiclePhysics {
       induction === 'twin-turbo' ? 5.5 : induction === 'turbo' ? 2.7 : 18)
 
     // --- Engine speed ------------------------------------------------------
-    if (this.transmission.type === 'cvt' && this.gearboxMode === 'D') {
+    if (this.transmission.type === 'cvt' && this.gearboxMode === 'D' && this.gear > 0) {
       const ratios = this.transmission.gearRatios
       const targetRpm = lerp(this.engine.idleRpm + 800, this.engine.redline * mode.cvtRpm, this.throttle)
       const idealRatio = targetRpm * this.car.wheelRadius * (2 * Math.PI / 60) /
-        (Math.max(this.speed, 2) * this.transmission.finalDrive)
+        (Math.max(Math.abs(this.speed), 2) * this.transmission.finalDrive)
       this.cvtRatio = approach(this.cvtRatio, clamp(idealRatio, ratios[ratios.length - 1], ratios[0]),
         step, this.transmission.ratioResponse ?? 2.8)
       this.gear = this.closestCvtGear()
     } else {
-      this.cvtRatio = this.transmission.gearRatios[this.gear - 1]
+      this.cvtRatio = this.gear === -1 ? this.transmission.reverseRatio
+        : this.gear === 0 ? 0 : this.transmission.gearRatios[this.gear - 1]
     }
     const activeRatio = this.cvtRatio * this.transmission.finalDrive
-    const wheelRpm = (this.speed / this.car.wheelRadius) * activeRatio * (60 / (2 * Math.PI))
+    const wheelRpm = (Math.abs(this.speed) / this.car.wheelRadius) * activeRatio * (60 / (2 * Math.PI))
     const launchCeiling = this.transmission.kind === 'torque-converter'
       ? Math.min(this.engine.redline * 0.36, 2800)
       : this.transmission.type === 'cvt' ? this.engine.redline * mode.cvtRpm
         : this.engine.redline * 0.5
     const launchRpm = this.engine.idleRpm + this.throttle * (launchCeiling - this.engine.idleRpm)
-    const clutchBlend = clamp(this.speed /
+    const clutchBlend = clamp(Math.abs(this.speed) /
       (this.transmission.kind === 'torque-converter' ? 12 : 7), 0, 1)
     let rpmTarget = lerp(launchRpm, Math.max(wheelRpm, this.engine.idleRpm), clutchBlend)
     if (this.transmission.type === 'manual') {
       const freeRpm = this.engine.idleRpm + this.throttle * (this.engine.redline * 0.9 - this.engine.idleRpm)
       rpmTarget = lerp(rpmTarget, freeRpm, this.clutch)
     }
+    if (this.gear === 0) rpmTarget = this.engine.idleRpm +
+      this.throttle * (this.engine.redline * 0.9 - this.engine.idleRpm)
     if (this.transmission.type !== 'manual' || this.clutch < 0.5) {
       rpmTarget = Math.max(rpmTarget, wheelRpm)
     }
@@ -273,7 +327,7 @@ export class VehiclePhysics {
     this.limiter = this.rpm >= this.engine.redline - 40
 
     // --- Automatic shifting ------------------------------------------------
-    if (this.gearboxMode === 'D' && this.transmission.type !== 'cvt' && this.shiftCooldown <= 0) {
+    if (this.gear > 0 && this.gearboxMode === 'D' && this.transmission.type !== 'cvt' && this.shiftCooldown <= 0) {
       // Shift points depend on pedal demand: gentle cruising short-shifts, while
       // wide-open throttle holds a gear near its performance shift point.
       const demand = Math.max(this.throttle, throttleTarget) ** 2.1
@@ -333,41 +387,51 @@ export class VehiclePhysics {
     this.limiter = this.rpm >= this.engine.redline - 40
 
     // --- Forces ------------------------------------------------------------
-    const gearRatio = this.transmission.type === 'cvt' && this.gearboxMode === 'D'
-      ? activeRatio : this.transmission.gearRatios[this.gear - 1] * this.transmission.finalDrive
+    const gearRatio = this.gear === -1 ? -this.transmission.reverseRatio * this.transmission.finalDrive
+      : this.gear === 0 ? 0
+        : this.transmission.type === 'cvt' && this.gearboxMode === 'D'
+          ? activeRatio : this.transmission.gearRatios[this.gear - 1] * this.transmission.finalDrive
     const boostFactor = induction === 'turbo' ? 0.65 + 0.35 * this.boost
       : induction === 'twin-turbo' ? 0.72 + 0.28 * this.boost : 1
     let engineTorque = torqueAtRpm(this.engine, this.rpm) *
       clamp(this.throttle * mode.throttle, 0, 1) * boostFactor
+    if (this.gear === -1) engineTorque *= 0.55
     if (this.limiter) engineTorque *= 0.12
     if (this.shiftTimer > 0) engineTorque *= this.shiftTransfer
     let driveForce = (engineTorque * gearRatio * DRIVETRAIN_EFFICIENCY) / this.car.wheelRadius
     if (this.transmission.type === 'manual') driveForce *= 1 - this.clutch
-    if (this.transmission.type !== 'manual' &&
-      this.speed < 3 && this.brake < 0.15 && this.throttle < 0.05) {
-      driveForce += this.car.mass * (this.transmission.creepAcceleration ?? 0) *
-        (1 - this.speed / 3)
+    if (this.transmission.type !== 'manual' && this.gear !== 0 &&
+      Math.abs(this.speed) < 3 && this.brake < 0.15 && this.throttle < 0.05) {
+      driveForce += Math.sign(this.gear) * this.car.mass *
+        (this.transmission.creepAcceleration ?? 0) * (1 - Math.abs(this.speed) / 3)
     }
     const availableGrip = this.maxTractionForce * (this.offRoad ? 0.48 : 1)
-    this.tractionLimited = driveForce > availableGrip
-    if (this.tractionControl) driveForce = Math.min(driveForce, availableGrip)
-    else if (this.tractionLimited) driveForce = availableGrip * 0.82
+    this.tractionLimited = Math.abs(driveForce) > availableGrip
+    if (this.tractionControl) driveForce = clamp(driveForce, -availableGrip, availableGrip)
+    else if (this.tractionLimited) driveForce = Math.sign(driveForce) * availableGrip * 0.82
 
     let resistance = this.dragFactor * this.speed * this.speed + this.rollingResistance
-    if (this.offRoad) resistance += 620 + this.speed * 26
-
-    let acceleration = (driveForce - resistance) / this.car.mass
-    acceleration -= this.brake * 9.6
-    if (handbrake) acceleration -= 4.2
-
-    this.speed = Math.max(0, this.speed + acceleration * step)
+    if (this.offRoad) resistance += 620 + Math.abs(this.speed) * 26
+    const stoppingAcceleration = resistance / this.car.mass + this.brake * 9.6 +
+      (handbrake ? 4.2 : 0)
+    if (this.gear === 0) {
+      const coastSpeed = Math.max(0, Math.abs(this.speed) - stoppingAcceleration * step)
+      this.speed = coastSpeed === 0 ? 0 : Math.sign(this.speed) * coastSpeed
+    } else if (this.gear === -1) {
+      const acceleration = driveForce / this.car.mass + stoppingAcceleration
+      this.speed = Math.max(-REVERSE_SPEED_LIMIT, Math.min(0, this.speed + acceleration * step))
+    } else {
+      const acceleration = driveForce / this.car.mass - stoppingAcceleration
+      this.speed = Math.max(0, this.speed + acceleration * step)
+    }
     this.distance += this.speed * step
+    this.odometer += Math.abs(this.speed) * step
     this.elapsed += step
-    this.maxSpeed = Math.max(this.maxSpeed, this.speed)
+    this.maxSpeed = Math.max(this.maxSpeed, Math.abs(this.speed))
 
     // --- Lateral movement --------------------------------------------------
-    const steerAuthority = clamp(this.speed / 14, 0, 1)
-    const lateralTarget = this.steer * 7.2 * steerAuthority
+    const steerAuthority = clamp(Math.abs(this.speed) / 14, 0, 1)
+    const lateralTarget = this.steer * 7.2 * steerAuthority * Math.sign(this.speed)
     this.lateralVelocity = approach(this.lateralVelocity, lateralTarget, step, 7)
     this.lateral += this.lateralVelocity * step
 
@@ -384,22 +448,24 @@ export class VehiclePhysics {
     const rpmFraction = this.rpm / this.engine.maxRpm
     return {
       speed: this.speed,
-      speedKmh: this.speed * 3.6,
+      speedKmh: Math.abs(this.speed) * 3.6,
       rpm: Math.round(this.rpm),
       rpmFraction,
       redlineFraction: this.engine.redline / this.engine.maxRpm,
       limiter: this.limiter,
       gear: this.gear,
       gearCount: this.gearCount,
-      gearRatio: (this.transmission.type === 'cvt' && this.gearboxMode === 'D'
-        ? this.cvtRatio : this.transmission.gearRatios[this.gear - 1]) * this.transmission.finalDrive,
+      gearRatio: this.gear === -1 ? -this.transmission.reverseRatio * this.transmission.finalDrive
+        : this.gear === 0 ? 0
+          : (this.transmission.type === 'cvt' && this.gearboxMode === 'D'
+            ? this.cvtRatio : this.transmission.gearRatios[this.gear - 1]) * this.transmission.finalDrive,
       gearboxMode: this.gearboxMode,
       driveMode: this.driveMode,
       tractionControl: this.tractionControl,
       tractionLimited: this.tractionLimited,
       boost: this.boost,
       distance: this.distance,
-      distanceKm: this.distance / 1000,
+      distanceKm: this.odometer / 1000,
       elapsed: this.elapsed,
       maxSpeedKmh: this.maxSpeed * 3.6,
       throttle: this.throttle,
@@ -407,6 +473,7 @@ export class VehiclePhysics {
       clutch: this.clutch,
       steer: this.steer,
       lateral: this.lateral,
+      lateralVelocity: this.lateralVelocity,
       offRoad: this.offRoad,
       shiftEvent: this.shiftEvent,
       shiftActive: this.shiftTimer > 0,

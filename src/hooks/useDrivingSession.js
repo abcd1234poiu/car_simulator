@@ -15,6 +15,7 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
   const [paused, setPaused] = useState(false)
   const [notice, setNotice] = useState(null)
   const [shiftPulse, setShiftPulse] = useState(0)
+  const [resetCount, setResetCount] = useState(0)
   const pausedRef = useRef(false)
   const noticeTimer = useRef(null)
 
@@ -36,6 +37,17 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     },
     [physics, notify],
   )
+
+  const requestRange = useCallback((range) => {
+    const result = physics.selectRange(range)
+    if (result.ok) {
+      setShiftPulse((value) => value + 1)
+      setTelemetry(physics.snapshot())
+      notify(result.message, 'info')
+    } else {
+      notify(result.message, 'warn')
+    }
+  }, [physics, notify])
 
   const setDriveMode = useCallback((mode) => {
     if (physics.setDriveMode(mode)) {
@@ -66,6 +78,7 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     physics.reset()
     input.clear()
     setTelemetry(physics.snapshot())
+    setResetCount((count) => count + 1)
     setPaused(false)
     notify('Run reset', 'info')
   }, [physics, input, notify])
@@ -92,11 +105,12 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
       onMute: () => onToggleMute?.(),
       onShift: requestShift,
       onGearboxMode: toggleGearboxMode,
+      onRange: requestRange,
       onDriveMode: setDriveMode,
       onTractionControl: toggleTractionControl,
     })
     return () => input.detach()
-  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, setDriveMode, toggleTractionControl])
+  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl])
 
   // Pause automatically when the tab loses focus.
   useEffect(() => {
@@ -149,10 +163,12 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     paused,
     notice,
     shiftPulse,
+    resetCount,
     togglePause,
     reset,
     setTouch,
     requestShift,
+    requestRange,
     setDriveMode,
     toggleTractionControl,
     toggleGearboxMode,

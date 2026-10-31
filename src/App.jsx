@@ -21,7 +21,7 @@ function App() {
     (car, engine, transmission) => {
       audio.setMuted(muted)
       audio.start(engine)
-      setSession({ car, engine, transmission })
+      setSession({ car, engine, transmission, roadSeed: Math.floor(Math.random() * 10_000) })
     },
     [audio, muted],
   )

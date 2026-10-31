@@ -154,6 +154,25 @@
 .drive-settings .setting-toggle { border: 1px solid var(--line-strong); }
 .drive-settings .setting-toggle.is-danger { color: #ff9aa3; border-color: rgba(255,77,94,0.5); background: rgba(255,77,94,0.12); }
 
+.range-selector {
+  position: absolute;
+  z-index: 10;
+  top: 143px;
+  right: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, 31px);
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(8, 13, 21, 0.9);
+  backdrop-filter: blur(15px);
+}
+.range-caption { grid-column: 1 / -1; text-align: center; font: 700 8px var(--font-mono); letter-spacing: .1em; color: var(--muted); }
+.range-selector button { height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; font: 800 12px var(--font-mono); color: var(--muted); }
+.range-selector button:hover { color: var(--text); background: rgba(255,255,255,.08); }
+.range-selector button.is-active { color: #081b17; background: var(--accent); border-color: var(--accent); }
+
 .toast {
   position: absolute;
   top: 130px;
@@ -439,6 +458,7 @@
 }
 
 @media (max-width: 900px) {
+  .range-selector { top: 124px; right: 10px; }
   .touch-controls {
     display: flex;
     bottom: 210px;
@@ -481,6 +501,8 @@
 }
 
 @media (max-width: 620px) {
+  .range-selector { top: 101px; grid-template-columns: repeat(3, 27px); padding: 5px; gap: 3px; }
+  .range-selector button { height: 28px; font-size: 10px; }
   .drive-settings { top: 62px; gap: 3px; padding: 4px; }
   .drive-settings button { padding: 6px 5px; font-size: 8px; letter-spacing: 0; }
   .toast { top: 105px; }

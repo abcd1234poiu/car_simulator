@@ -36,6 +36,7 @@ export function CarSilhouette({ car, className = '' }) {
 
       <path d={body} fill={`url(#${gradientId})`} stroke={car.accent} strokeOpacity="0.45" strokeWidth="1.2" />
       <path d={window} fill="#07101a" opacity="0.85" />
+      {car.taxi && <g><rect x="130" y="18" width="24" height="8" rx="2" fill="#fff4c0" stroke="#956e20" strokeWidth="1" /><text x="142" y="23.5" textAnchor="middle" fontSize="5" fontWeight="900" fill="#46370e">TAXI</text></g>}
       <path
         d={body}
         fill="none"

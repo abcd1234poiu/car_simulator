@@ -28,6 +28,8 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
     Math.max(0, (rpmFraction - 0.55) / 0.45) * SHIFT_LIGHTS,
   )
   const automatic = telemetry.gearboxMode === 'D'
+  const inNeutral = telemetry.gear === 0
+  const inReverse = telemetry.gear === -1
 
   return (
     <section className="dashboard" aria-label="Driving dashboard">
@@ -40,7 +42,7 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           <span className="chip chip-engine">{engine.badge}</span>
           <span className="chip">{car.drivetrain}</span>
         </div>
-        <div className="dash-mode">{transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {automatic ? 'DRIVE' : 'MANUAL'}</div>
+        <div className="dash-mode">{transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {inNeutral ? 'NEUTRAL' : inReverse ? 'REVERSE' : automatic ? 'DRIVE' : 'MANUAL'}</div>
       </div>
 
       <div className="dash-gauges">
@@ -70,14 +72,15 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           </div>
 
           <div className="gear-block">
-            <span className="gear-prefix">{automatic ? 'D' : 'M'}</span>
+            {!inNeutral && !inReverse && <span className="gear-prefix">{automatic ? 'D' : 'M'}</span>}
             <span key={shiftPulse} className="gear-value">
-              {telemetry.gear ?? 1}
+              {inNeutral ? 'N' : inReverse ? 'R' : telemetry.gear ?? 1}
             </span>
-            <span className="gear-total">/ {telemetry.gearCount ?? transmission.gearRatios.length}</span>
+            {!inNeutral && !inReverse && <span className="gear-total">/ {telemetry.gearCount ?? transmission.gearRatios.length}</span>}
           </div>
           <div className="gear-caption">
-            {telemetry.shiftActive ? `${transmission.shortName.toUpperCase()} · SHIFTING` :
+            {inNeutral ? 'NEUTRAL · ENGINE DISCONNECTED' : inReverse ? 'REVERSE · DRIVE BACKWARD' :
+              telemetry.shiftActive ? `${transmission.shortName.toUpperCase()} · SHIFTING` :
               transmission.type === 'cvt' && automatic ? 'CVT · VIRTUAL RATIO' :
                 automatic ? `${transmission.shortName.toUpperCase()} · AUTO` :
                   'GEAR · E / Q TO SHIFT'}

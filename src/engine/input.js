@@ -26,6 +26,7 @@ export class InputController {
     this.onMute = null
     this.onShift = null
     this.onGearboxMode = null
+    this.onRange = null
     this.onDriveMode = null
     this.onTractionControl = null
     this.attached = false
@@ -44,6 +45,7 @@ export class InputController {
     this.onMute = handlers.onMute ?? null
     this.onShift = handlers.onShift ?? null
     this.onGearboxMode = handlers.onGearboxMode ?? null
+    this.onRange = handlers.onRange ?? null
     this.onDriveMode = handlers.onDriveMode ?? null
     this.onTractionControl = handlers.onTractionControl ?? null
     target.addEventListener('keydown', this.handleKeyDown)
@@ -87,6 +89,15 @@ export class InputController {
         return
       case 'KeyG':
         this.onGearboxMode?.()
+        return
+      case 'KeyV':
+        this.onRange?.('R')
+        return
+      case 'KeyN':
+        this.onRange?.('N')
+        return
+      case 'KeyF':
+        this.onRange?.('D')
         return
       case 'Digit1':
       case 'Digit2':

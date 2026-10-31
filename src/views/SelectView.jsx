@@ -74,12 +74,12 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
             <Gauge size={18} />
           </span>
           <span className="brand-text">
-            APEX<span>DRIVE</span>
+            METRO<span>CAB</span>
           </span>
-          <span className="brand-tag">WEB SIM</span>
+          <span className="brand-tag">DRIVER SIM</span>
         </div>
         <div className="nav-actions">
-          <span className="nav-note">Endless highway · synthesized sound</span>
+          <span className="nav-note">Dispatch calls · live route map · city fares</span>
           <button
             type="button"
             className="icon-button"
@@ -97,17 +97,17 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           <section className="hero">
             <span className="eyebrow">
               <span className="pulse-dot" />
-              BROWSER DRIVING SIMULATOR
+              TAXI DRIVER SIMULATOR
             </span>
             <h1>
-              Build your machine.
+              Take the wheel.
               <br />
-              <span className="accent-text">Own the road.</span>
+              <span className="accent-text">Pick up the city.</span>
             </h1>
             <p className="hero-copy">
-              Choose a chassis, dial in the powertrain and take on an endless highway.
-              Every engine note is synthesized live from RPM — no samples, no downloads,
-              just pure combustion math.
+              Choose your cab, accept a fare on the dispatch phone, and drive to each
+              pickup and drop-off. Follow the generated route map, stop safely for your
+              passenger, and build your earnings one ride at a time.
             </p>
             <div className="hero-stats">
               <div>
@@ -128,7 +128,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           <section className="section">
             <div className="section-head">
               <span className="step">01</span>
-              <h2>Choose your car</h2>
+              <h2>Choose your fleet car</h2>
               <span className="section-hint">Tap a card to select</span>
             </div>
 
@@ -180,7 +180,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
         <aside className="configurator">
           <div className="config-summary" style={{ '--car-color': car.color }}>
             <div className="summary-top">
-              <span className="summary-label">YOUR BUILD</span>
+              <span className="summary-label">YOUR TAXI</span>
               <span className="summary-class">{car.className}</span>
             </div>
             <CarSilhouette car={car} />
@@ -290,11 +290,11 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
 
             <button type="button" className="start-button" onClick={start}>
               <Play size={20} fill="currentColor" />
-              Start driving
+              Start shift
               <ChevronRight size={20} />
             </button>
             <p className="start-hint">
-              Sound on for the full experience · WASD or arrow keys · Click or drag pedals
+              Accept jobs on the dispatch phone · WASD or arrow keys · Click or drag pedals
               on any device
             </p>
           </div>

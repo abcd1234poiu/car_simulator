@@ -1,8 +1,9 @@
 /**
- * Three.js road scene: endless highway, roadside props and a parametric car.
+ * Three.js road scene: winding route, roadside props and a parametric car.
  */
 
 import * as THREE from 'three'
+import { roadCenter, roadHeading, roadLocalPoint } from '../taxi/road.js'
 
 const ROAD_LENGTH = 900
 const ROAD_WIDTH = 12
@@ -12,6 +13,88 @@ const RECYCLE_BEHIND = -ROAD_LENGTH + RECYCLE_AHEAD
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 const damp = (current, target, dt, rate) => current + (target - current) * (1 - Math.exp(-rate * dt))
+
+const ROAD_SEGMENTS = 90
+const ROAD_START = -45
+
+function createRoadRibbon(width, offset, material) {
+  const geometry = new THREE.BufferGeometry()
+  const positions = new Float32Array((ROAD_SEGMENTS + 1) * 2 * 3)
+  const normals = new Float32Array(positions.length)
+  const uvs = new Float32Array((ROAD_SEGMENTS + 1) * 2 * 2)
+  const indices = []
+  for (let i = 0; i <= ROAD_SEGMENTS; i += 1) {
+    normals[i * 6 + 1] = 1
+    normals[i * 6 + 4] = 1
+    const v = (ROAD_START + i * ROAD_LENGTH / ROAD_SEGMENTS) / ROAD_LENGTH
+    uvs[i * 4] = 0
+    uvs[i * 4 + 1] = v
+    uvs[i * 4 + 2] = 1
+    uvs[i * 4 + 3] = v
+    if (i < ROAD_SEGMENTS) {
+      const a = i * 2
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+    }
+  }
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  geometry.setIndex(indices)
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.ribbon = { width, offset }
+  return mesh
+}
+
+function createStopMarker(label, color) {
+  const group = new THREE.Group()
+  const beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.12, 4.2, 10),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.42, depthWrite: false }),
+  )
+  beacon.position.y = 2.1
+  group.add(beacon)
+  const base = new THREE.Mesh(
+    new THREE.RingGeometry(0.9, 1.55, 32),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }),
+  )
+  base.rotation.x = -Math.PI / 2
+  base.position.y = 0.04
+  group.add(base)
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 144
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = label === 'PICKUP' ? '#f9c86a' : '#fb7185'
+  ctx.fillRect(5, 5, 502, 134)
+  ctx.fillStyle = '#17202a'
+  ctx.font = '900 76px Arial, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, 256, 75)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }))
+  sign.position.y = 5.0
+  sign.scale.set(5.8, 1.63, 1)
+  group.add(sign)
+  group.userData.sign = sign
+  if (label === 'PICKUP') {
+    const coat = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.29, 1.12, 10),
+      new THREE.MeshStandardMaterial({ color: 0x56bfc0, roughness: 0.88 }),
+    )
+    coat.position.set(-1.25, 0.95, 0)
+    group.add(coat)
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.21, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xc58e6d, roughness: 0.9 }),
+    )
+    head.position.set(-1.25, 1.72, 0)
+    group.add(head)
+  }
+  group.visible = false
+  return group
+}
 
 function createRoadTexture(renderer) {
   const canvas = document.createElement('canvas')
@@ -296,6 +379,12 @@ function createCarModel(car) {
     emissiveIntensity: 0.35,
     roughness: 0.4,
   })
+  const reverseLightMaterial = new THREE.MeshStandardMaterial({
+    color: 0xcbd4d4,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.04,
+    roughness: 0.35,
+  })
 
   const shape = CAR_SHAPES[car.bodyStyle] ?? CAR_SHAPES.coupe
   const { length } = shape
@@ -318,6 +407,21 @@ function createCarModel(car) {
   )
   roof.position.set(0, shape.roof.y, shape.roof.z)
   group.add(roof)
+
+  if (car.taxi) {
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.68, 0.18, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0xffefbd, emissive: 0xffdc78, emissiveIntensity: 0.65 }),
+    )
+    sign.position.set(0, shape.roof.y + 0.12, shape.roof.z)
+    group.add(sign)
+    const signStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.055, 0.25),
+      new THREE.MeshStandardMaterial({ color: 0x171c20, roughness: 0.7 }),
+    )
+    signStripe.position.set(0, shape.roof.y + 0.22, shape.roof.z)
+    group.add(signStripe)
+  }
 
   // Mirrors and side sills.
   for (const side of [-1, 1]) {
@@ -351,6 +455,11 @@ function createCarModel(car) {
   )
   brakeBar.position.set(0, 0.73, length / 2 + 0.01)
   group.add(brakeBar)
+  for (const side of [-1, 1]) {
+    const reverseLamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.075, 0.075), reverseLightMaterial)
+    reverseLamp.position.set(side * 0.49, 0.69, length / 2 + 0.075)
+    group.add(reverseLamp)
+  }
 
   const tailLink = new THREE.Mesh(
     new THREE.BoxGeometry(0.58, 0.03, 0.05),
@@ -467,7 +576,7 @@ function createCarModel(car) {
   group.add(headlight)
   group.add(headlight.target)
 
-  return { group, wheels, brakeLightMaterial, headlight }
+  return { group, wheels, brakeLightMaterial, reverseLightMaterial, headlight }
 }
 
 function createPole(side) {
@@ -532,8 +641,9 @@ function createTree() {
 }
 
 export class RoadScene {
-  constructor(canvas, car) {
+  constructor(canvas, car, roadSeed = 0) {
     this.canvas = canvas
+    this.roadSeed = roadSeed
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -593,20 +703,17 @@ export class RoadScene {
       roughness: 0.94,
       metalness: 0.02,
     })
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH), roadMaterial)
-    road.rotation.x = -Math.PI / 2
-    road.position.set(0, 0, -ROAD_LENGTH / 2 + RECYCLE_AHEAD)
+    this.ribbons = []
+    const road = createRoadRibbon(ROAD_WIDTH, 0, roadMaterial)
     this.scene.add(road)
+    this.ribbons.push(road)
 
     const shoulderMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 1 })
     for (const side of [-1, 1]) {
-      const shoulder = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.6, ROAD_LENGTH),
-        shoulderMaterial,
-      )
-      shoulder.rotation.x = -Math.PI / 2
-      shoulder.position.set(side * (ROAD_WIDTH / 2 + 1.3), -0.005, -ROAD_LENGTH / 2 + RECYCLE_AHEAD)
+      const shoulder = createRoadRibbon(2.6, side * (ROAD_WIDTH / 2 + 1.3), shoulderMaterial)
+      shoulder.position.y = -0.005
       this.scene.add(shoulder)
+      this.ribbons.push(shoulder)
     }
 
     const ground = new THREE.Mesh(
@@ -619,17 +726,35 @@ export class RoadScene {
 
     this.movingProps = []
     this.populateProps()
+    this.intersections = []
+    const crossingMaterial = new THREE.MeshStandardMaterial({ color: 0x283139, roughness: 0.95 })
+    for (let i = 0; i < 7; i += 1) {
+      const crossing = new THREE.Mesh(new THREE.PlaneGeometry(48, 11), crossingMaterial)
+      crossing.rotation.x = -Math.PI / 2
+      crossing.userData.roadDistance = i * 180
+      crossing.position.y = 0.015
+      this.scene.add(crossing)
+      this.intersections.push(crossing)
+    }
+
+    this.stopMarkers = {
+      pickup: createStopMarker('PICKUP', 0xf9c86a),
+      dropoff: createStopMarker('DROP OFF', 0xfb7185),
+    }
+    this.stopDistances = { pickup: null, dropoff: null }
+    this.scene.add(this.stopMarkers.pickup, this.stopMarkers.dropoff)
 
     const carModel = createCarModel(car)
     this.carGroup = carModel.group
     this.wheels = carModel.wheels
     this.brakeLightMaterial = carModel.brakeLightMaterial
+    this.reverseLightMaterial = carModel.reverseLightMaterial
     this.scene.add(this.carGroup)
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(canvas.parentElement ?? canvas)
     this.resize()
-    this.renderer.render(this.scene, this.camera)
+    this.update(0, {})
   }
 
   populateProps() {
@@ -639,6 +764,9 @@ export class RoadScene {
       const pole = createPole(side)
       pole.position.set(side * 7.7, 0, z)
       pole.rotation.y = side === 1 ? Math.PI : 0
+      pole.userData.roadDistance = -z
+      pole.userData.lateralOffset = side * 7.7
+      pole.userData.baseRotation = pole.rotation.y
       this.scene.add(pole)
       this.movingProps.push(pole)
     }
@@ -648,6 +776,9 @@ export class RoadScene {
       const side = i % 2 === 0 ? 1 : -1
       const z = RECYCLE_AHEAD - Math.random() * (RECYCLE_AHEAD - RECYCLE_BEHIND)
       tree.position.set(side * (11 + Math.random() * 16), 0, z)
+      tree.userData.roadDistance = -z
+      tree.userData.lateralOffset = tree.position.x
+      tree.userData.baseRotation = tree.rotation.y
       this.scene.add(tree)
       this.movingProps.push(tree)
     }
@@ -662,31 +793,87 @@ export class RoadScene {
     this.camera.updateProjectionMatrix()
   }
 
+  setStops(pickupDistance, dropoffDistance, status) {
+    this.stopDistances.pickup = status === 'trip' || status === 'completed' ? null : pickupDistance
+    this.stopDistances.dropoff = status === 'completed' ? null : dropoffDistance
+  }
+
+  updateRoad(distance) {
+    const heading = roadHeading(distance, this.roadSeed)
+    const center = roadCenter(distance, this.roadSeed)
+    const cos = Math.cos(heading)
+    const sin = Math.sin(heading)
+    for (let i = 0; i <= ROAD_SEGMENTS; i += 1) {
+      const sampleDistance = distance + ROAD_START + i * ROAD_LENGTH / ROAD_SEGMENTS
+      const deltaX = roadCenter(sampleDistance, this.roadSeed) - center
+      const deltaDistance = sampleDistance - distance
+      const baseX = deltaX * cos - deltaDistance * sin
+      const baseZ = -deltaX * sin - deltaDistance * cos
+      const relativeHeading = roadHeading(sampleDistance, this.roadSeed) - heading
+      const rightX = Math.cos(relativeHeading)
+      const rightZ = Math.sin(relativeHeading)
+      for (const mesh of this.ribbons) {
+        const { width, offset } = mesh.userData.ribbon
+        const positions = mesh.geometry.attributes.position
+        const left = offset - width / 2
+        const right = offset + width / 2
+        positions.setXYZ(i * 2, baseX + left * rightX, 0.005, baseZ + left * rightZ)
+        positions.setXYZ(i * 2 + 1, baseX + right * rightX, 0.005, baseZ + right * rightZ)
+      }
+    }
+    for (const mesh of this.ribbons) {
+      const positions = mesh.geometry.attributes.position
+      positions.needsUpdate = true
+      mesh.geometry.computeBoundingSphere()
+    }
+  }
+
   update(dt, telemetry) {
     const step = clamp(dt, 0, 0.05)
-    const speed = Math.max(0, telemetry?.speed ?? 0)
+    const speed = telemetry?.speed ?? 0
     const steer = telemetry?.steer ?? 0
     const lateral = telemetry?.lateral ?? 0
+    const lateralVelocity = telemetry?.lateralVelocity ?? 0
     const distance = telemetry?.distance ?? 0
     const braking = telemetry?.brake ?? 0
     const offRoad = Boolean(telemetry?.offRoad)
 
     this.clock += step
 
-    // Road scrolls under a stationary car.
+    // The road bends around the stationary, tangent-aligned car.
     this.roadTexture.offset.y = distance / TILE_LENGTH
+    this.updateRoad(distance)
 
     for (const prop of this.movingProps) {
-      prop.position.z += speed * step
-      if (prop.position.z > RECYCLE_AHEAD + 10) {
-        prop.position.z -= ROAD_LENGTH
+      while (prop.userData.roadDistance < distance - 45) prop.userData.roadDistance += ROAD_LENGTH
+      while (prop.userData.roadDistance >= distance - 45 + ROAD_LENGTH) prop.userData.roadDistance -= ROAD_LENGTH
+      const point = roadLocalPoint(prop.userData.roadDistance, distance, prop.userData.lateralOffset, this.roadSeed)
+      prop.position.set(point.x, 0, point.z)
+      prop.rotation.y = prop.userData.baseRotation + roadHeading(prop.userData.roadDistance, this.roadSeed) - roadHeading(distance, this.roadSeed)
+    }
+    for (const crossing of this.intersections) {
+      while (crossing.userData.roadDistance < distance - 35) crossing.userData.roadDistance += 7 * 180
+      while (crossing.userData.roadDistance >= distance - 35 + 7 * 180) crossing.userData.roadDistance -= 7 * 180
+      const point = roadLocalPoint(crossing.userData.roadDistance, distance, 0, this.roadSeed)
+      crossing.position.x = point.x
+      crossing.position.z = point.z
+      crossing.rotation.set(-Math.PI / 2, roadHeading(crossing.userData.roadDistance, this.roadSeed) - roadHeading(distance, this.roadSeed), 0, 'YXZ')
+    }
+    for (const [kind, marker] of Object.entries(this.stopMarkers)) {
+      const stopDistance = this.stopDistances[kind]
+      const point = stopDistance === null ? null : roadLocalPoint(stopDistance, distance, -5.9, this.roadSeed)
+      marker.visible = point !== null && point.z > -550 && point.z < 30
+      if (marker.visible) {
+        marker.position.set(point.x, 0, point.z)
+        const scale = 1 + clamp(-point.z / 100, 0, 2.8)
+        marker.userData.sign.scale.set(5.8 * scale, 1.63 * scale, 1)
       }
     }
 
     this.lateral = damp(this.lateral, lateral, step, 9)
     this.carGroup.position.x = this.lateral
-    this.carGroup.rotation.y = -steer * 0.085
-    this.carGroup.rotation.z = -steer * 0.022
+    this.carGroup.rotation.y = -Math.atan2(lateralVelocity, Math.max(Math.abs(speed), 3))
+    this.carGroup.rotation.z = -steer * 0.03
 
     const spin = (speed * step) / 0.34
     for (const wheel of this.wheels) {
@@ -695,14 +882,16 @@ export class RoadScene {
     }
 
     this.brakeLightMaterial.emissiveIntensity = braking > 0.08 ? 2.6 : 0.35
+    this.reverseLightMaterial.emissiveIntensity = telemetry?.gear === -1 ? 2.8 : 0.04
 
-    const speedFactor = clamp(speed / 70, 0, 1)
+    const speedFactor = clamp(Math.abs(speed) / 70, 0, 1)
     this.shake = offRoad ? 0.07 : 0.006 + speedFactor * 0.012
 
-    this.camera.position.x = this.lateral * 0.82 + Math.sin(this.clock * 37) * this.shake
+    // Follow only part of the lateral movement so the car visibly changes lanes.
+    this.camera.position.x = 0.55 + this.lateral * 0.35 + Math.sin(this.clock * 37) * this.shake
     this.camera.position.y = 2.0 + Math.sin(this.clock * 23) * this.shake * 0.55
     this.camera.position.z = 9.3 - speedFactor * 0.45
-    this.camera.lookAt(this.lateral * 0.66, 0.9, -18)
+    this.camera.lookAt(0.25 + this.lateral * 0.12, 0.9, -18)
 
     const targetFov = 54 + speedFactor * 11
     if (Math.abs(this.camera.fov - targetFov) > 0.01) {
