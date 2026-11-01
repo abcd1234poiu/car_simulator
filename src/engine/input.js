@@ -16,7 +16,7 @@ const PREVENT_DEFAULT = new Set([
 export class InputController {
   constructor() {
     this.keys = new Set()
-    this.touch = { throttle: 0, brake: 0, clutch: 0, left: false, right: false }
+    this.touch = { throttle: 0, brake: 0, clutch: 0, steer: 0, handbrake: false }
     this.throttle = 0
     this.brake = 0
     this.clutch = 0
@@ -29,6 +29,7 @@ export class InputController {
     this.onRange = null
     this.onDriveMode = null
     this.onTractionControl = null
+    this.onIgnition = null
     this.attached = false
 
     this.handleKeyDown = this.handleKeyDown.bind(this)
@@ -48,6 +49,7 @@ export class InputController {
     this.onRange = handlers.onRange ?? null
     this.onDriveMode = handlers.onDriveMode ?? null
     this.onTractionControl = handlers.onTractionControl ?? null
+    this.onIgnition = handlers.onIgnition ?? null
     target.addEventListener('keydown', this.handleKeyDown)
     target.addEventListener('keyup', this.handleKeyUp)
     target.addEventListener('blur', this.handleBlur)
@@ -107,6 +109,9 @@ export class InputController {
       case 'KeyT':
         this.onTractionControl?.()
         return
+      case 'KeyI':
+        this.onIgnition?.()
+        return
       default:
         this.keys.add(event.code)
     }
@@ -118,18 +123,21 @@ export class InputController {
 
   handleBlur() {
     this.keys.clear()
-    this.touch = { throttle: 0, brake: 0, clutch: 0, left: false, right: false }
+    this.touch = { throttle: 0, brake: 0, clutch: 0, steer: 0, handbrake: false }
   }
 
   setTouch(control, value) {
     if (!(control in this.touch)) return
     this.touch[control] = ['throttle', 'brake', 'clutch'].includes(control)
-      ? Math.min(1, Math.max(0, Number(value) || 0)) : Boolean(value)
+      ? Math.min(1, Math.max(0, Number(value) || 0))
+      : control === 'steer'
+        ? Math.min(1, Math.max(-1, Number(value) || 0))
+        : Boolean(value)
   }
 
   clear() {
     this.keys.clear()
-    this.touch = { throttle: 0, brake: 0, clutch: 0, left: false, right: false }
+    this.touch = { throttle: 0, brake: 0, clutch: 0, steer: 0, handbrake: false }
     this.throttle = 0
     this.brake = 0
     this.clutch = 0
@@ -141,25 +149,21 @@ export class InputController {
     const wantThrottle = Math.max(keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0, this.touch.throttle)
     const wantBrake = Math.max(keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0, this.touch.brake)
     const wantClutch = Math.max(keys.has('KeyC') ? 1 : 0, this.touch.clutch)
-    const wantLeft = keys.has('KeyA') || keys.has('ArrowLeft') || this.touch.left
-    const wantRight = keys.has('KeyD') || keys.has('ArrowRight') || this.touch.right
+    const keySteer = (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) -
+      (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0)
+    const wantSteer = keySteer !== 0 ? keySteer : this.touch.steer
 
     this.throttle = approach(this.throttle, wantThrottle, dt, wantThrottle ? 12 : 10)
     this.brake = approach(this.brake, wantBrake, dt, wantBrake ? 15 : 14)
     this.clutch = approach(this.clutch, wantClutch, dt, wantClutch ? 30 : 15)
-    this.steer = approach(
-      this.steer,
-      (wantRight ? 1 : 0) - (wantLeft ? 1 : 0),
-      dt,
-      8,
-    )
+    this.steer = approach(this.steer, wantSteer, dt, 12)
 
     return {
       throttle: this.throttle,
       brake: this.brake,
       clutch: this.clutch,
       steer: this.steer,
-      handbrake: keys.has('Space'),
+      handbrake: keys.has('Space') || this.touch.handbrake,
     }
   }
 }

@@ -1,16 +1,11 @@
 .dispatch-trigger { position: relative; }
 .dispatch-trigger.has-alert::after { content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: #f9c86a; box-shadow: 0 0 9px #f9c86a; }
-.taxi-mission { position: absolute; z-index: 7; top: 146px; left: 22px; width: 244px; overflow: hidden; border: 1px solid rgba(144, 213, 218, .2); border-radius: 18px; background: rgba(6, 18, 27, .91); backdrop-filter: blur(18px); box-shadow: 0 16px 45px rgba(0, 0, 0, .38); }
+.taxi-mission { position: absolute; z-index: 7; top: 272px; left: 22px; width: 210px; overflow: hidden; border: 1px solid rgba(144, 213, 218, .2); border-radius: 18px; background: rgba(6, 18, 27, .91); backdrop-filter: blur(18px); box-shadow: 0 16px 45px rgba(0, 0, 0, .38); }
 .mission-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 12px; font: 700 9px var(--font-mono); color: #b6d7da; letter-spacing: .04em; }
 .mission-head span { display: flex; align-items: center; gap: 5px; color: #66e7d1; }
 .mission-head strong { font-weight: 600; white-space: nowrap; }
-.taxi-map { position: relative; width: 100%; height: 188px; overflow: hidden; background: #0c1e2a; }
-.taxi-map svg { width: 100%; height: 100%; }
-.taxi-map-compact { height: 155px; }
-.taxi-map-legend { position: absolute; bottom: 6px; left: 6px; right: 6px; display: flex; justify-content: center; gap: 9px; padding: 5px 4px; border-radius: 6px; background: rgba(4, 17, 25, .86); font: 700 8px var(--font-mono); color: #e0edef; }
-.taxi-map-legend span { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
 .map-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
-.map-you { background: #69bbff; }.map-pickup { background: #f9c86a; }.map-dropoff { background: #fb7185; }
+.map-you { background: #34e1c8; }.map-pickup { background: #f9c86a; }.map-dropoff { background: #fb7185; }.map-destination { background: #69bbff; }
 .mission-target { display: flex; flex-direction: column; gap: 3px; padding: 11px 13px 13px; }
 .mission-target small { font: 700 9px var(--font-mono); letter-spacing: .12em; color: #65e7d0; }
 .mission-target strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
@@ -45,8 +40,11 @@
 .phone-footer button { display: flex; justify-content: center; align-items: center; gap: 5px; min-height: 40px; border-radius: 9px; font-size: 12px; font-weight: 800; }
 .phone-primary { flex: 1; background: #5fe5c9; color: #08231f; }.phone-primary:hover { background: #9bffe9; }
 .phone-secondary { width: 72px; background: #20313c; color: #d6e3e7; }.phone-secondary:hover { background: #344a56; }
-.phone-active-note { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 38px; font-size: 10px; color: #94cfc4; }
-@media (max-width: 900px) { .taxi-mission { top: 116px; left: 10px; width: 192px; } .taxi-map-compact { height: 116px; } .mission-head { font-size: 8px; } .dispatch-phone { right: 10px; top: 101px; width: min(310px, calc(100vw - 20px)); max-height: calc(100vh - 230px); } }
-@media (max-width: 620px) { .taxi-mission { top: 102px; width: 166px; } .mission-head { flex-direction: column; align-items: flex-start; padding: 7px 9px; } .taxi-map-compact { height: 96px; } .taxi-map-compact .taxi-map-legend { gap: 4px; font-size: 7px; } .mission-target { padding: 8px 9px; } .mission-target strong { font-size: 11px; } .mission-target small, .mission-target > span { font-size: 8px; } .dispatch-phone { top: 100px; max-height: calc(100vh - 380px); } .dispatch-phone .taxi-map { height: 130px; } .phone-header strong { font-size: 16px; } }
-@media (max-height: 650px) and (min-width: 621px) { .dispatch-phone { max-height: calc(100vh - 110px); } .dispatch-phone .taxi-map { height: 110px; } }
-@media (max-height: 480px) and (max-width: 620px) { .dispatch-phone { top: 62px; max-height: calc(100vh - 72px); } .dispatch-phone .taxi-map { display: none; } }
+.phone-active-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.phone-active-row .phone-secondary { flex: 0 0 86px; display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 38px; border-radius: 9px; background: #3a1f24; color: #ffb6bf; font-size: 10px; font-weight: 700; }
+.phone-active-row .phone-secondary:hover { background: #552b32; }
+.phone-active-note { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; min-height: 38px; font-size: 10px; color: #94cfc4; }
+@media (max-width: 900px) { .taxi-mission { top: 260px; left: 10px; width: 168px; } .mission-head { font-size: 8px; } .dispatch-phone { right: 10px; top: 101px; width: min(310px, calc(100vw - 20px)); max-height: calc(100vh - 230px); } .city-map-phone { height: 156px; } }
+@media (max-width: 620px) { .taxi-mission { top: 260px; width: 150px; } .mission-head { flex-direction: column; align-items: flex-start; padding: 7px 9px; } .mission-target { padding: 8px 9px; } .mission-target strong { font-size: 11px; } .mission-target small, .mission-target > span { font-size: 8px; } .dispatch-phone { top: 100px; max-height: calc(100vh - 380px); } .city-map-phone { height: 132px; } .phone-header strong { font-size: 16px; } }
+@media (max-height: 650px) and (min-width: 621px) { .dispatch-phone { max-height: calc(100vh - 110px); } .city-map-phone { height: 110px; } }
+@media (max-height: 480px) and (max-width: 620px) { .dispatch-phone { top: 62px; max-height: calc(100vh - 72px); } .city-map-phone { display: none; } }

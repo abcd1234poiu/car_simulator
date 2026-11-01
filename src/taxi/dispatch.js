@@ -1,41 +1,94 @@
-// Stops follow the winding main road and repeat as the shift advances, so rides
-// remain available indefinitely even though intersections are not selectable yet.
-const STOP_NAMES = [
-  'Central Station', 'Market Square', 'Riverfront', 'Civic Centre',
-  'Old Town', 'University Gate', 'Garden District', 'East Terminal',
-]
-const PASSENGERS = ['Aisha', 'Daniel', 'Mei Ling', 'Ravi', 'Sofia', 'Hafiz', 'Nadia', 'Alex']
-const BLOCK_METRES = 180
-const fareFor = (pickupDistance, dropoffDistance) =>
-  Math.round((5 + (dropoffDistance - pickupDistance) * 0.004) * 10) / 10
+// World-space taxi dispatch for the merged free-roam city.
+//
+// Rides are placed on named street corners anywhere in the city. The driver is
+// free to take any route; a stop is completed by arriving within STOP_RADIUS
+// metres of the marker below 6 km/h. Pickups and drop-offs always lie a
+// sensible drive away from the cab so a shift keeps moving.
 
-export function stopAt(index) {
-  const district = Math.floor(index / STOP_NAMES.length)
-  return {
-    name: `${STOP_NAMES[index % STOP_NAMES.length]}${district ? ` · District ${district + 1}` : ''}`,
-    distance: index * BLOCK_METRES,
-  }
+import {
+  CITY_STOPS,
+  SPAWN,
+  TOWNS,
+  distanceBetween,
+  townAt,
+} from '../maps/city.js'
+
+const PASSENGERS = ['Aisha', 'Daniel', 'Mei Ling', 'Ravi', 'Sofia', 'Hafiz', 'Nadia', 'Alex']
+const BASE_FARE = 4.5
+const FARE_PER_METRE = 0.0035
+export const STOP_RADIUS = 20
+
+const fareFor = (pickup, dropoff) =>
+  Math.round((BASE_FARE + distanceBetween(pickup, dropoff) * FARE_PER_METRE) * 10) / 10
+
+const CITY_IDS = ['metro', ...TOWNS.map((town) => town.id)]
+const STOP_CITY = new Map(CITY_STOPS.map((stop) => [
+  stop,
+  townAt(stop.x, stop.z)?.id ?? 'metro',
+]))
+const STOPS_BY_CITY = new Map(CITY_IDS.map((id) => [
+  id,
+  CITY_STOPS.filter((stop) => STOP_CITY.get(stop) === id),
+]))
+
+function pickStop(pool, offset) {
+  return pool[((offset % pool.length) + pool.length) % pool.length]
 }
 
-export function createTicket(currentDistance = 0, serial = 1) {
-  const pickupIndex = Math.max(1, Math.ceil((currentDistance + 130) / BLOCK_METRES))
-  const dropoffIndex = pickupIndex + 3 + (serial % 3)
-  const pickup = stopAt(pickupIndex)
-  const dropoff = stopAt(dropoffIndex)
+const cityOf = (position) => townAt(position.x, position.z)?.id ?? 'metro'
+
+export function createTicket(currentPosition = SPAWN, serial = 1) {
+  const position = { x: currentPosition.x ?? SPAWN.x, z: currentPosition.z ?? SPAWN.z }
+  const localCity = cityOf(position)
+  const localIndex = Math.max(0, CITY_IDS.indexOf(localCity))
+
+  // Rotate the pickup city through the whole map so fares are not all in Metro.
+  const pickupCityId = CITY_IDS[(localIndex + Math.max(1, serial)) % CITY_IDS.length]
+  const cityPool = STOPS_BY_CITY.get(pickupCityId)?.length
+    ? STOPS_BY_CITY.get(pickupCityId)
+    : CITY_STOPS
+  const spacedPickups = cityPool.filter(
+    (stop) => distanceBetween(position, stop) >= 150,
+  )
+  const pickupPool = spacedPickups.length ? spacedPickups : cityPool
+  const pickup = pickStop(pickupPool, serial * 5 - 3)
+  const pickupIndex = Math.max(0, CITY_IDS.indexOf(STOP_CITY.get(pickup)))
+
+  // Two out of three fares cross a city boundary; every third ride stays local.
+  const crossCity = true
+  let dropoffPool = []
+  if (crossCity) {
+    for (let step = 1; step < CITY_IDS.length && dropoffPool.length === 0; step += 1) {
+      const cityId = CITY_IDS[(pickupIndex + serial + step) % CITY_IDS.length]
+      if (cityId === pickupCityId) continue
+      dropoffPool = (STOPS_BY_CITY.get(cityId) ?? []).filter(
+        (stop) => distanceBetween(pickup, stop) >= 280,
+      )
+    }
+  }
+  if (dropoffPool.length === 0) {
+    dropoffPool = pickupPool.filter(
+      (stop) => stop !== pickup && distanceBetween(pickup, stop) >= 280,
+    )
+  }
+  if (dropoffPool.length === 0) {
+    dropoffPool = CITY_STOPS.filter((stop) => stop !== pickup)
+  }
+  const dropoff = pickStop(dropoffPool, serial * 11 + 1)
+
   return {
     id: `TX-${String(serial).padStart(3, '0')}`,
     passenger: PASSENGERS[(serial - 1) % PASSENGERS.length],
-    originDistance: currentDistance,
     pickup,
     dropoff,
-    fare: fareFor(pickup.distance, dropoff.distance),
+    fare: fareFor(pickup, dropoff),
   }
 }
 
-export function initialDispatchState() {
+export function initialDispatchState(position = SPAWN) {
   return {
     status: 'available',
-    ticket: createTicket(),
+    ticket: createTicket(position),
     serial: 1,
     earnings: 0,
     completedRides: 0,
@@ -46,6 +99,16 @@ export function dispatchReducer(state, action) {
   switch (action.type) {
     case 'accept':
       return state.status === 'available' ? { ...state, status: 'pickup' } : state
+    case 'cancel': {
+      if (state.status !== 'pickup' && state.status !== 'trip') return state
+      const serial = state.serial + 1
+      return {
+        ...state,
+        status: 'available',
+        serial,
+        ticket: createTicket(action.position, serial),
+      }
+    }
     case 'skip':
     case 'next': {
       if (action.type === 'skip' && state.status !== 'available') return state
@@ -55,27 +118,18 @@ export function dispatchReducer(state, action) {
         ...state,
         status: 'available',
         serial,
-        ticket: createTicket(action.distance, serial),
+        ticket: createTicket(action.position, serial),
       }
     }
     case 'progress': {
-      const { distance, speedKmh } = action
-      if (speedKmh > 6) return state
-      if (state.status === 'pickup' && distance >= state.ticket.pickup.distance - 25) {
-        // If a driver passes the original drop-off before boarding, place a new
-        // destination ahead instead of creating a trip with no forward progress.
-        let ticket = state.ticket
-        if (distance >= ticket.dropoff.distance - 50) {
-          const dropoff = stopAt(Math.ceil((distance + 500) / BLOCK_METRES))
-          ticket = {
-            ...ticket,
-            dropoff,
-            fare: fareFor(distance, dropoff.distance),
-          }
-        }
-        return { ...state, status: 'trip', ticket }
+      const { position, speedKmh } = action
+      if (!position || speedKmh > 6) return state
+      if (state.status === 'pickup' &&
+        distanceBetween(position, state.ticket.pickup) <= STOP_RADIUS) {
+        return { ...state, status: 'trip' }
       }
-      if (state.status === 'trip' && distance >= state.ticket.dropoff.distance - 25) {
+      if (state.status === 'trip' &&
+        distanceBetween(position, state.ticket.dropoff) <= STOP_RADIUS) {
         return {
           ...state,
           status: 'completed',
@@ -86,16 +140,23 @@ export function dispatchReducer(state, action) {
       return state
     }
     case 'reset':
-      return initialDispatchState()
+      return initialDispatchState(action.position)
     default:
       return state
   }
 }
 
-export function remainingDistance(state, distance) {
-  if (state.status === 'pickup') return Math.max(0, state.ticket.pickup.distance - distance)
-  if (state.status === 'trip') return Math.max(0, state.ticket.dropoff.distance - distance)
-  return 0
+/** Current waypoint, or null when there is nothing to drive to. */
+export function currentStop(state) {
+  if (state.status === 'pickup') return state.ticket.pickup
+  if (state.status === 'trip') return state.ticket.dropoff
+  return null
+}
+
+export function remainingDistance(state, position) {
+  const stop = currentStop(state)
+  if (!stop || !position) return 0
+  return Math.max(0, distanceBetween(position, stop) - STOP_RADIUS)
 }
 
 export function formatDistance(metres) {

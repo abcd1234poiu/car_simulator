@@ -7,7 +7,22 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
-import { CARS, ENGINES, TRANSMISSIONS, getCar, getEngine, getTransmission, DEFAULT_SELECTION } from '../constants/config.js'
+import {
+  ASPIRATIONS,
+  ALL_TRANSMISSIONS,
+  CARS,
+  ENGINES,
+  TRANSMISSIONS,
+  TYRES,
+  TYRE_ORDER,
+  DEFAULT_TYRE,
+  DEFAULT_SELECTION,
+  defaultAspirationForEngine,
+  getAspiration,
+  getCar,
+  getEngine,
+  getTransmission,
+} from '../constants/config.js'
 import { peakPowerHp, peakTorqueNm, performanceSummary } from '../engine/specs.js'
 import { CarSilhouette } from '../components/CarSilhouette.jsx'
 import '../styles/select.css'
@@ -15,29 +30,39 @@ import '../styles/select.css'
 export function SelectView({ audio, muted, onToggleMute, onStart }) {
   const [carId, setCarId] = useState(DEFAULT_SELECTION.carId)
   const [engineId, setEngineId] = useState(DEFAULT_SELECTION.engineId)
+  const [aspirationId, setAspirationId] = useState(
+    () => defaultAspirationForEngine(getEngine(DEFAULT_SELECTION.engineId)).id,
+  )
   const [transmissionId, setTransmissionId] = useState(DEFAULT_SELECTION.transmissionId)
-  const [preview, setPreview] = useState({ engineId: null, active: false })
+  const [tyreId, setTyreId] = useState(DEFAULT_TYRE)
+  const [preview, setPreview] = useState({ engineId: null, aspirationId: null, active: false })
 
   const car = getCar(carId)
   const engine = getEngine(engineId)
+  const aspiration = getAspiration(aspirationId)
   const transmission = getTransmission(transmissionId)
-  const previewing = preview.active && preview.engineId === engine.id
+  const tyre = TYRES[tyreId] ?? TYRES[DEFAULT_TYRE]
+  const factoryAspiration = defaultAspirationForEngine(engine)
+  const previewing = preview.active && preview.engineId === engine.id &&
+    preview.aspirationId === aspiration.id
   const specs = useMemo(
-    () => performanceSummary(car, engine, transmission),
-    [car, engine, transmission],
+    () => performanceSummary(car, engine, transmission, aspiration),
+    [car, engine, transmission, aspiration],
   )
 
   const stopPreview = () => {
     audio.stopPreview()
     audio.stop()
-    setPreview({ engineId: null, active: false })
+    setPreview({ engineId: null, aspirationId: null, active: false })
   }
 
   const selectCar = (nextCar) => {
     stopPreview()
     setCarId(nextCar.id)
-    if (!nextCar.engines.includes(engineId)) setEngineId(nextCar.defaultEngine)
-    if (!nextCar.transmissions.includes(transmissionId)) {
+    const nextEngineId = nextCar.engines.includes(engineId) ? engineId : nextCar.defaultEngine
+    setEngineId(nextEngineId)
+    setAspirationId(defaultAspirationForEngine(getEngine(nextEngineId)).id)
+    if (!ALL_TRANSMISSIONS.includes(transmissionId)) {
       setTransmissionId(nextCar.defaultTransmission)
     }
   }
@@ -45,6 +70,12 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
   const selectEngine = (nextEngineId) => {
     stopPreview()
     setEngineId(nextEngineId)
+    setAspirationId(defaultAspirationForEngine(getEngine(nextEngineId)).id)
+  }
+
+  const selectAspiration = (nextAspirationId) => {
+    stopPreview()
+    setAspirationId(nextAspirationId)
   }
 
   useEffect(() => () => audio.stopPreview(), [audio])
@@ -53,14 +84,14 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
     if (previewing) {
       stopPreview()
     } else {
-      const ok = audio.preview(engine)
-      setPreview({ engineId: engine.id, active: ok })
+      const ok = audio.preview(engine, aspiration)
+      setPreview({ engineId: engine.id, aspirationId: aspiration.id, active: ok })
     }
   }
 
   const start = () => {
     audio.stopPreview()
-    onStart(car, engine, transmission)
+    onStart(car, engine, transmission, aspiration, tyre)
   }
 
   return (
@@ -79,7 +110,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           <span className="brand-tag">DRIVER SIM</span>
         </div>
         <div className="nav-actions">
-          <span className="nav-note">Dispatch calls · live route map · city fares</span>
+          <span className="nav-note">Open-city free roam · dispatch fares on the live city map</span>
           <button
             type="button"
             className="icon-button"
@@ -105,9 +136,11 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
               <span className="accent-text">Pick up the city.</span>
             </h1>
             <p className="hero-copy">
-              Choose your cab, accept a fare on the dispatch phone, and drive to each
-              pickup and drop-off. Follow the generated route map, stop safely for your
-              passenger, and build your earnings one ride at a time.
+              Choose your cab, then head straight into the open world. Accept a fare on
+              the dispatch phone whenever you like, follow the live map to each pickup
+              and drop-off, and explore Metro City plus the A1-linked towns of Riverside,
+              Northgate, Southport, Highland and Suncoast — plus the Genting and Batang
+              mountain passes. Taxi work and free roam are the same session.
             </p>
             <div className="hero-stats">
               <div>
@@ -117,6 +150,10 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
               <div>
                 <strong>{Object.keys(ENGINES).length}</strong>
                 <span>Engines</span>
+              </div>
+              <div>
+                <strong>{Object.keys(ASPIRATIONS).length}</strong>
+                <span>Aspiration</span>
               </div>
               <div>
                 <strong>{Object.keys(TRANSMISSIONS).length}</strong>
@@ -186,7 +223,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
             <CarSilhouette car={car} />
             <div className="summary-name">{car.name}</div>
             <div className="summary-line">
-              {engine.name} · {transmission.shortName} · {car.drivetrain}
+              {aspiration.shortName} {engine.name} · {transmission.shortName} · {tyre.shortName} · {car.drivetrain}
             </div>
           </div>
 
@@ -213,7 +250,8 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
                     <span className="engine-copy">
                       <strong>{option.name}</strong>
                       <small>
-                        {peakPowerHp(option)} hp · {peakTorqueNm(option)} Nm ·{' '}
+                        {peakPowerHp(option, aspiration)} hp ·{' '}
+                        {peakTorqueNm(option, aspiration)} Nm ·{' '}
                         {option.redline.toLocaleString('en-US')} rpm
                       </small>
                     </span>
@@ -239,11 +277,45 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           <section className="config-section">
             <div className="config-head">
               <span className="step">03</span>
+              <h3>Aspiration</h3>
+              <span className="config-hint">{aspiration.badge}</span>
+            </div>
+
+            <div className="aspiration-grid">
+              {Object.values(ASPIRATIONS).map((option) => {
+                const active = option.id === aspiration.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`aspiration-option ${active ? 'is-active' : ''}`}
+                    onClick={() => selectAspiration(option.id)}
+                    aria-pressed={active}
+                    title={option.description}
+                  >
+                    <span className="aspiration-badge">{option.badge}</span>
+                    <strong>{option.shortName}</strong>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="transmission-note">
+              {aspiration.description}
+              {aspiration.id !== factoryAspiration.id
+                ? ` Factory tune for this engine is ${factoryAspiration.shortName}.`
+                : ' Factory tune for this engine.'}
+            </p>
+          </section>
+
+          <section className="config-section">
+            <div className="config-head">
+              <span className="step">04</span>
               <h3>Transmission</h3>
+              <span className="config-hint">{ALL_TRANSMISSIONS.length} available</span>
             </div>
 
             <div className="transmission-toggle">
-              {car.transmissions.map((id) => {
+              {ALL_TRANSMISSIONS.map((id) => {
                 const option = TRANSMISSIONS[id]
                 const active = option.id === transmission.id
                 return (
@@ -263,7 +335,49 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
             <p className="transmission-note">{transmission.description}</p>
           </section>
 
+          <section className="config-section">
+            <div className="config-head">
+              <span className="step">05</span>
+              <h3>Tyres</h3>
+              <span className="config-hint">{tyre.badge}</span>
+            </div>
+
+            <div className="aspiration-grid">
+              {TYRE_ORDER.map((id) => {
+                const option = TYRES[id]
+                const active = option.id === tyre.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`aspiration-option ${active ? 'is-active' : ''}`}
+                    onClick={() => setTyreId(option.id)}
+                    aria-pressed={active}
+                    title={option.description}
+                  >
+                    <span className="aspiration-badge">{option.badge}</span>
+                    <strong>{option.shortName}</strong>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="transmission-note">
+              {tyre.description} Grip {Math.round(tyre.grip * 100)}% · wear rate {tyre.wearRate.toFixed(1)}×.
+            </p>
+          </section>
+
           <div className="start-panel">
+            <div className="session-brief">
+              <span className="session-brief-badge">CITY SHIFT</span>
+              <strong>Free roam + taxi dispatch</strong>
+              <small>
+                Explore Metro City, Riverside, Northgate, Southport, Highland and
+                Suncoast, linked by the A1 autobahn and exit links. Accept fares from
+                the in-game phone whenever you want — one world, one map, no mode
+                switch.
+              </small>
+            </div>
+
             <dl className="final-specs">
               <div>
                 <dt>Power</dt>
@@ -290,12 +404,11 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
 
             <button type="button" className="start-button" onClick={start}>
               <Play size={20} fill="currentColor" />
-              Start shift
+              Enter the city
               <ChevronRight size={20} />
             </button>
             <p className="start-hint">
-              Accept jobs on the dispatch phone · WASD or arrow keys · Click or drag pedals
-              on any device
+              Accept jobs on the dispatch phone · WASD or arrow keys · Click or drag pedals on any device
             </p>
           </div>
         </aside>

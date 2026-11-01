@@ -1,21 +1,36 @@
 import { useEffect, useReducer } from 'react'
+import { SPAWN } from '../maps/city.js'
 import { dispatchReducer, initialDispatchState } from '../taxi/dispatch.js'
 
 export function useTaxiDispatch(telemetry, resetCount) {
-  const [dispatch, send] = useReducer(dispatchReducer, undefined, initialDispatchState)
+  const [dispatch, send] = useReducer(
+    dispatchReducer,
+    undefined,
+    () => initialDispatchState({ x: telemetry.x ?? SPAWN.x, z: telemetry.z ?? SPAWN.z }),
+  )
 
   useEffect(() => {
-    send({ type: 'progress', distance: telemetry.distance, speedKmh: telemetry.speedKmh })
-  }, [telemetry.distance, telemetry.speedKmh])
+    send({
+      type: 'progress',
+      position: {
+        x: telemetry.x ?? SPAWN.x,
+        z: telemetry.z ?? SPAWN.z,
+      },
+      speedKmh: telemetry.speedKmh,
+    })
+  }, [telemetry.x, telemetry.z, telemetry.speedKmh])
 
   useEffect(() => {
-    if (resetCount > 0) send({ type: 'reset' })
+    if (resetCount > 0) send({ type: 'reset', position: SPAWN })
   }, [resetCount])
+
+  const position = { x: telemetry.x ?? SPAWN.x, z: telemetry.z ?? SPAWN.z }
 
   return {
     dispatch,
     accept: () => send({ type: 'accept' }),
-    skip: () => send({ type: 'skip', distance: telemetry.distance }),
-    next: () => send({ type: 'next', distance: telemetry.distance }),
+    cancel: () => send({ type: 'cancel', position }),
+    skip: () => send({ type: 'skip', position }),
+    next: () => send({ type: 'next', position }),
   }
 }

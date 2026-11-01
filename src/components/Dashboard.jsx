@@ -22,7 +22,9 @@ function Pedal({ label, value, tone }) {
   )
 }
 
-export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) {
+export function Dashboard({
+  car, engine, aspiration, transmission, telemetry, shiftPulse, ignitionSweep = 0, tyre,
+}) {
   const rpmFraction = telemetry.rpmFraction ?? 0
   const litLights = Math.round(
     Math.max(0, (rpmFraction - 0.55) / 0.45) * SHIFT_LIGHTS,
@@ -30,6 +32,10 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
   const automatic = telemetry.gearboxMode === 'D'
   const inNeutral = telemetry.gear === 0
   const inReverse = telemetry.gear === -1
+  const ignitionOff = telemetry.ignition === false
+  const engineBraking = !ignitionOff && (telemetry.engineBraking ?? 0) > 0.05
+  const shiftShock = !ignitionOff && (telemetry.mechanicalShock ?? 0) > 0.08
+  const handbrakeOn = !ignitionOff && telemetry.handbrake
 
   return (
     <section className="dashboard" aria-label="Driving dashboard">
@@ -40,9 +46,14 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
         <div className="dash-car-meta">{car.className}</div>
         <div className="dash-chips">
           <span className="chip chip-engine">{engine.badge}</span>
+          {aspiration && <span className="chip chip-aspiration">{aspiration.badge}</span>}
           <span className="chip">{car.drivetrain}</span>
+          {tyre && <span className="chip chip-tyre">{tyre.shortName} · {Math.round((1 - (telemetry.tyreWear ?? 0)) * 100)}%</span>}
         </div>
-        <div className="dash-mode">{transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {inNeutral ? 'NEUTRAL' : inReverse ? 'REVERSE' : automatic ? 'DRIVE' : 'MANUAL'}</div>
+        <div className="dash-mode">
+          {transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {inNeutral ? 'NEUTRAL' : inReverse ? 'REVERSE' : automatic ? 'DRIVE' : 'MANUAL'}
+          {transmission.type === 'manual' && (telemetry.clutch ?? 0) > 0.1 ? ' · CLUTCH' : ''}
+        </div>
       </div>
 
       <div className="dash-gauges">
@@ -57,6 +68,7 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           color="#34e1c8"
           colorEnd="#7c8cff"
           valueSize={50}
+          sweepKey={ignitionSweep}
         />
 
         <div className="dash-center">
@@ -72,11 +84,15 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           </div>
 
           <div className="gear-block">
-            {!inNeutral && !inReverse && <span className="gear-prefix">{automatic ? 'D' : 'M'}</span>}
+            <span className={`gear-prefix ${inNeutral || inReverse ? 'is-ghost' : ''}`}>
+              {automatic ? 'D' : 'M'}
+            </span>
             <span key={shiftPulse} className="gear-value">
               {inNeutral ? 'N' : inReverse ? 'R' : telemetry.gear ?? 1}
             </span>
-            {!inNeutral && !inReverse && <span className="gear-total">/ {telemetry.gearCount ?? transmission.gearRatios.length}</span>}
+            <span className={`gear-total ${inNeutral || inReverse ? 'is-ghost' : ''}`}>
+              / {telemetry.gearCount ?? transmission.gearRatios.length}
+            </span>
           </div>
           <div className="gear-caption">
             {inNeutral ? 'NEUTRAL · ENGINE DISCONNECTED' : inReverse ? 'REVERSE · DRIVE BACKWARD' :
@@ -104,6 +120,7 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
           color="#7c8cff"
           colorEnd="#ff4d5e"
           valueSize={38}
+          sweepKey={ignitionSweep}
         />
       </div>
 
@@ -128,8 +145,24 @@ export function Dashboard({ car, engine, transmission, telemetry, shiftPulse }) 
         </div>
         <div className="stat stat-status">
           <span className="stat-label">System</span>
-          <span className={`stat-value status-value ${telemetry.tractionLimited ? 'is-active' : ''}`}>
-            {telemetry.tractionControl ? (telemetry.tractionLimited ? 'TSC ACTIVE' : 'TSC ON') : 'TSC OFF'}
+          <span className={`stat-value status-value ${
+            ignitionOff ? 'is-ignition-off'
+              : shiftShock ? 'is-shock'
+                : handbrakeOn ? 'is-handbrake'
+                  : engineBraking ? 'is-engine-brake'
+                    : telemetry.tractionLimited ? 'is-active' : ''
+          }`}>
+            {ignitionOff
+              ? 'IGNITION OFF'
+              : shiftShock
+                ? 'SHIFT SHOCK'
+                : handbrakeOn
+                  ? 'HANDBRAKE'
+                  : engineBraking
+                    ? 'ENGINE BRAKE'
+                    : telemetry.tractionControl
+                      ? (telemetry.tractionLimited ? 'TSC ACTIVE' : 'TSC ON')
+                      : 'TSC OFF'}
           </span>
         </div>
       </div>

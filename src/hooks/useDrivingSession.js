@@ -1,22 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { VehiclePhysics } from '../engine/physics.js'
+import { FreeRoamVehiclePhysics } from '../engine/freeRoamPhysics.js'
 import { InputController } from '../engine/input.js'
 
 const UI_REFRESH = 0.05
 
-export function useDrivingSession({ car, engine, transmission, sceneRef, audio, onToggleMute }) {
+export function useDrivingSession({
+  car, engine, transmission, aspiration, tyre, sceneRef, audio, onToggleMute,
+}) {
   const physics = useMemo(
-    () => new VehiclePhysics({ car, engine, transmission }),
-    [car, engine, transmission],
+    () => new FreeRoamVehiclePhysics({ car, engine, transmission, aspiration, tyre }),
+    [car, engine, transmission, aspiration, tyre],
   )
   const input = useMemo(() => new InputController(), [])
 
   const [telemetry, setTelemetry] = useState(() => physics.snapshot())
   const [paused, setPaused] = useState(false)
+  const [ignition, setIgnitionState] = useState(false)
+  const [ignitionSweep, setIgnitionSweep] = useState(0)
   const [notice, setNotice] = useState(null)
   const [shiftPulse, setShiftPulse] = useState(0)
   const [resetCount, setResetCount] = useState(0)
   const pausedRef = useRef(false)
+  const ignitionRef = useRef(false)
   const noticeTimer = useRef(null)
 
   const notify = useCallback((message, tone = 'info') => {
@@ -74,8 +79,40 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     setPaused((value) => !value)
   }, [])
 
+  const setIgnition = useCallback((next) => {
+    const on = Boolean(next)
+    if (ignitionRef.current === on) return
+    ignitionRef.current = on
+    physics.setIgnition(on)
+    setIgnitionState(on)
+    setTelemetry(physics.snapshot())
+    if (on) {
+      setIgnitionSweep((value) => value + 1)
+      if (audio?.startIgnition) audio.startIgnition(engine, aspiration)
+      else audio?.start(engine, aspiration)
+      notify('Ignition on — engine running', 'info')
+    } else {
+      audio?.stop()
+      notify('Ignition off', 'warn')
+    }
+  }, [physics, audio, engine, aspiration, notify])
+
+  const toggleIgnition = useCallback(() => {
+    setIgnition(!ignitionRef.current)
+  }, [setIgnition])
+
+  const teleport = useCallback((point) => {
+    if (!point) return
+    const snapshot = physics.teleport(point.x, point.z, point.heading)
+    input.clear()
+    setTelemetry(snapshot)
+    setPaused(false)
+    notify(`Teleported to ${point.name ?? 'location'}`, 'info')
+  }, [physics, input, notify])
+
   const reset = useCallback(() => {
     physics.reset()
+    physics.setIgnition(ignitionRef.current)
     input.clear()
     setTelemetry(physics.snapshot())
     setResetCount((count) => count + 1)
@@ -108,9 +145,10 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
       onRange: requestRange,
       onDriveMode: setDriveMode,
       onTractionControl: toggleTractionControl,
+      onIgnition: toggleIgnition,
     })
     return () => input.detach()
-  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl])
+  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl, toggleIgnition])
 
   // Pause automatically when the tab loses focus.
   useEffect(() => {
@@ -120,6 +158,11 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
+
+  useEffect(() => {
+    physics.setIgnition(false)
+    audio?.stop()
+  }, [physics, audio])
 
   useEffect(() => () => window.clearTimeout(noticeTimer.current), [])
 
@@ -161,10 +204,14 @@ export function useDrivingSession({ car, engine, transmission, sceneRef, audio, 
   return {
     telemetry,
     paused,
+    ignition,
+    ignitionSweep,
     notice,
     shiftPulse,
     resetCount,
     togglePause,
+    toggleIgnition,
+    teleport,
     reset,
     setTouch,
     requestShift,

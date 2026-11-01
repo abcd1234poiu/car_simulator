@@ -18,10 +18,9 @@ function App() {
   }, [audio])
 
   const startDrive = useCallback(
-    (car, engine, transmission) => {
+    (car, engine, transmission, aspiration, tyre) => {
       audio.setMuted(muted)
-      audio.start(engine)
-      setSession({ car, engine, transmission, roadSeed: Math.floor(Math.random() * 10_000) })
+      setSession({ car, engine, transmission, aspiration, tyre })
     },
     [audio, muted],
   )

@@ -8,21 +8,25 @@ import {
   VolumeX,
   Smartphone,
   Navigation,
+  Map,
+  Power,
+  X,
 } from 'lucide-react'
-import { RoadScene } from '../engine/scene.js'
+import { CityScene } from '../engine/cityScene.js'
 import { useDrivingSession } from '../hooks/useDrivingSession.js'
 import { Dashboard } from '../components/Dashboard.jsx'
 import { TouchControls } from '../components/TouchControls.jsx'
 import { DispatchPhone } from '../components/DispatchPhone.jsx'
-import { TaxiMap } from '../components/TaxiMap.jsx'
+import { Minimap } from '../maps/Minimap.jsx'
 import { useTaxiDispatch } from '../hooks/useTaxiDispatch.js'
 import { formatDistance, remainingDistance } from '../taxi/dispatch.js'
+import { TELEPORT_POINTS, cityLabelAt, distanceBetween } from '../maps/city.js'
 import '../styles/drive.css'
 import '../styles/taxi.css'
 
 const CONTROL_ROWS = [
   ['W / ↑', 'Throttle'],
-  ['S / ↓', 'Brake'],
+  ['S / ↓', 'Brake / reverse'],
   ['A D / ← →', 'Steer'],
   ['C + E / Q', 'Clutch + shift (manual)'],
   ['G', 'Switch D / M (automatic)'],
@@ -30,25 +34,39 @@ const CONTROL_ROWS = [
   ['1 / 2 / 3', 'Eco / Normal / Sport'],
   ['T', 'Traction control on / off'],
   ['Space', 'Handbrake'],
-  ['R', 'Reset run'],
+  ['R', 'Return to spawn & restart shift'],
   ['P / Esc', 'Pause'],
+  ['I', 'Ignition on / off'],
   ['M', 'Mute sound'],
 ]
 
+const STATUS_COPY = {
+  available: 'NEW RIDE REQUEST',
+  pickup: 'PICK UP PASSENGER',
+  trip: 'DROP OFF PASSENGER',
+  completed: 'FARE COMPLETE',
+}
+
 export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
-  const { car, engine, transmission, roadSeed } = session
+  const { car, engine, transmission, aspiration, tyre } = session
   const canvasRef = useRef(null)
   const sceneRef = useRef(null)
   const [sceneError, setSceneError] = useState(false)
   const [phoneOpen, setPhoneOpen] = useState(true)
+  const [overview, setOverview] = useState(false)
+  const [destination, setDestination] = useState(null)
 
   const {
     telemetry,
     paused,
+    ignition,
+    ignitionSweep,
     notice,
     shiftPulse,
     resetCount,
     togglePause,
+    toggleIgnition,
+    teleport,
     reset,
     setTouch,
     requestShift,
@@ -60,16 +78,33 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
     car,
     engine,
     transmission,
+    aspiration,
+    tyre,
     sceneRef,
     audio,
     onToggleMute,
   })
-  const { dispatch, accept, skip, next } = useTaxiDispatch(telemetry, resetCount)
-  const remaining = remainingDistance(dispatch, telemetry.distance)
+  const { dispatch, accept, cancel, skip, next } = useTaxiDispatch(telemetry, resetCount)
+  const remaining = remainingDistance(dispatch, telemetry)
   const target = dispatch.status === 'trip' ? dispatch.ticket.dropoff : dispatch.ticket.pickup
+  const district = cityLabelAt(telemetry.x ?? 0, telemetry.z ?? 0)
+
   const resetRun = () => {
     reset()
     setPhoneOpen(true)
+  }
+
+  const teleportToDestination = () => {
+    if (!destination) return
+    teleport({
+      x: destination.x,
+      z: destination.z,
+      heading: telemetry.heading ?? 0,
+      name: 'map point',
+    })
+    setDestination(null)
+    setOverview(false)
+    setPhoneOpen(false)
   }
 
   useEffect(() => {
@@ -78,10 +113,10 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
 
     let scene = null
     try {
-      scene = new RoadScene(canvas, car, roadSeed)
+      scene = new CityScene(canvas, car)
       sceneRef.current = scene
     } catch (error) {
-      console.error('Unable to start the 3D road scene', error)
+      console.error('Unable to start the 3D city scene', error)
       requestAnimationFrame(() => setSceneError(true))
     }
 
@@ -89,15 +124,15 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
       scene?.dispose()
       sceneRef.current = null
     }
-  }, [car, roadSeed])
+  }, [car])
 
   useEffect(() => {
     sceneRef.current?.setStops(
-      dispatch.ticket.pickup.distance,
-      dispatch.ticket.dropoff.distance,
+      dispatch.ticket.pickup,
+      dispatch.ticket.dropoff,
       dispatch.status,
     )
-  }, [dispatch.status, dispatch.ticket, sceneRef])
+  }, [dispatch.status, dispatch.ticket])
 
   return (
     <div className="drive-screen">
@@ -105,6 +140,11 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
         <canvas ref={canvasRef} className="drive-canvas" aria-hidden="true" />
         {sceneError && <div className="scene-fallback" aria-hidden="true" />}
         <div className="drive-vignette" aria-hidden="true" />
+        <div
+          className="impact-flash"
+          style={{ opacity: Math.min(0.55, (telemetry.impact ?? 0) * 0.7) }}
+          aria-hidden="true"
+        />
       </div>
 
       <header className="drive-top">
@@ -118,14 +158,29 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
             {car.name}
           </span>
           <span className="drive-config">
-            {engine.badge} · {transmission.shortName} · {car.drivetrain}
+            {district} · {aspiration?.badge} · {engine.badge} · {transmission.shortName} · {car.drivetrain}
           </span>
         </div>
 
         <div className="drive-actions">
-          <button type="button" className={`icon-button dispatch-trigger ${dispatch.status === 'available' || dispatch.status === 'completed' ? 'has-alert' : ''}`}
-            onClick={() => setPhoneOpen((value) => !value)} aria-label={phoneOpen ? 'Close dispatch phone' : 'Open dispatch phone'}
-            title="Dispatch phone" aria-pressed={phoneOpen}>
+          <button
+            type="button"
+            className={`icon-button ignition-button ${ignition ? 'is-on' : ''}`}
+            onClick={toggleIgnition}
+            aria-label={ignition ? 'Switch ignition off' : 'Start ignition'}
+            title={ignition ? 'Ignition off' : 'Start engine (I)'}
+            aria-pressed={ignition}
+          >
+            <Power size={18} />
+          </button>
+          <button
+            type="button"
+            className={`icon-button dispatch-trigger ${dispatch.status === 'available' || dispatch.status === 'completed' ? 'has-alert' : ''}`}
+            onClick={() => setPhoneOpen((value) => !value)}
+            aria-label={phoneOpen ? 'Close dispatch phone' : 'Open dispatch phone'}
+            title="Dispatch phone"
+            aria-pressed={phoneOpen}
+          >
             <Smartphone size={18} />
           </button>
           <button
@@ -146,22 +201,66 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
           >
             {paused ? <Play size={18} /> : <Pause size={18} />}
           </button>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => setOverview((value) => !value)}
+            aria-label={overview ? 'Return to drive camera' : 'Show full city map'}
+            title={overview ? 'Drive view' : 'Full city map'}
+            aria-pressed={overview}
+          >
+            <Map size={18} />
+          </button>
         </div>
       </header>
 
+      <Minimap
+        telemetry={telemetry}
+        ticket={dispatch.ticket}
+        status={dispatch.status}
+        destination={destination}
+      />
+
       <div className="taxi-mission">
-        <div className="mission-head"><span><Navigation size={14} /> LIVE ROUTE</span><strong>{dispatch.completedRides} rides · RM {dispatch.earnings.toFixed(2)}</strong></div>
-        <TaxiMap ticket={dispatch.ticket} distance={telemetry.distance} lateral={telemetry.lateral} status={dispatch.status} roadSeed={roadSeed} compact />
+        <div className="mission-head">
+          <span><Navigation size={14} /> {dispatch.status === 'available' ? 'DISPATCH' : 'LIVE ROUTE'}</span>
+          <strong>{dispatch.completedRides} rides · RM {dispatch.earnings.toFixed(2)}</strong>
+        </div>
         <div className="mission-target">
-          <small>{dispatch.status === 'available' ? 'NEW RIDE REQUEST' : dispatch.status === 'pickup' ? 'PICK UP PASSENGER' : dispatch.status === 'trip' ? 'DROP OFF PASSENGER' : 'FARE COMPLETE'}</small>
+          <small>{STATUS_COPY[dispatch.status]}</small>
           <strong>{dispatch.status === 'completed' ? `RM ${dispatch.ticket.fare.toFixed(2)} earned` : target.name}</strong>
-          <span>{dispatch.status === 'available' ? 'Open the phone to accept' : dispatch.status === 'completed' ? 'Open the phone for your next ride' : remaining > 0 ? `${formatDistance(remaining)} ahead` : 'Stop safely here'}</span>
+          <span>
+            {dispatch.status === 'available'
+              ? 'Open the phone to accept'
+              : dispatch.status === 'completed'
+                ? 'Open the phone for your next ride'
+                : remaining > 0
+                  ? `${formatDistance(remaining)} to ${dispatch.status === 'pickup' ? 'pickup' : 'drop-off'}`
+                  : 'Stop safely here'}
+          </span>
         </div>
       </div>
 
-      <DispatchPhone dispatch={dispatch} distance={telemetry.distance} lateral={telemetry.lateral} roadSeed={roadSeed} open={phoneOpen}
+      <DispatchPhone
+        dispatch={dispatch}
+        telemetry={telemetry}
+        destination={destination}
+        open={phoneOpen}
         onClose={() => setPhoneOpen(false)}
-        onAccept={() => { accept(); setPhoneOpen(false) }} onSkip={skip} onNext={next} />
+        onAccept={() => { accept(); setPhoneOpen(false) }}
+        onCancel={cancel}
+        onSkip={skip}
+        onNext={next}
+      />
+
+      {!ignition && !paused && (
+        <div className="ignition-hint">
+          <Power size={15} />
+          <span>ENGINE OFF</span>
+          <button type="button" onClick={toggleIgnition}>Start engine</button>
+          <small>I</small>
+        </div>
+      )}
 
       {notice && <div className={`toast toast-${notice.tone}`}>{notice.message}</div>}
 
@@ -169,12 +268,71 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
         <div className="offroad-alert">OFF ROAD — GRIP &amp; SPEED REDUCED</div>
       )}
 
+      {overview && (
+        <div className="overview-map" role="dialog" aria-label="Full city map">
+          <div className="overview-label">
+            <Map size={14} /> CITY MAP <span>· {district}</span>
+          </div>
+          <button
+            type="button"
+            className="overview-close"
+            onClick={() => setOverview(false)}
+            aria-label="Close city map"
+            title="Close map"
+          >
+            <X size={20} />
+          </button>
+          <div className={`overview-destination ${destination ? 'is-set' : ''}`}>
+            {destination
+              ? (
+                <>
+                  DESTINATION · {formatDistance(distanceBetween(
+                    { x: telemetry.x ?? 0, z: telemetry.z ?? 0 },
+                    destination,
+                  ))}
+                  <button type="button" className="is-primary" onClick={teleportToDestination}>
+                    Teleport here
+                  </button>
+                  <button type="button" onClick={() => setDestination(null)}>Clear</button>
+                </>
+              )
+              : 'Click anywhere on the map to set a destination or teleport there'}
+          </div>
+          <Minimap
+            variant="overview"
+            telemetry={telemetry}
+            ticket={dispatch.ticket}
+            status={dispatch.status}
+            destination={destination}
+            onPickDestination={setDestination}
+          />
+          <div className="teleport-panel" aria-label="Teleport locations">
+            <span className="teleport-title">TELEPORT</span>
+            <div className="teleport-options">
+              {TELEPORT_POINTS.map((point) => (
+                <button
+                  key={point.id}
+                  type="button"
+                  onClick={() => {
+                    teleport(point)
+                    setOverview(false)
+                    setPhoneOpen(false)
+                  }}
+                >
+                  {point.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="drive-settings" aria-label="Drive settings">
         <div className="setting-group" role="group" aria-label="Driving mode">
-          {['eco', 'normal', 'sport'].map((mode) => (
-            <button key={mode} type="button" className={telemetry.driveMode === mode ? 'is-active' : ''}
-              onClick={() => setDriveMode(mode)} aria-pressed={telemetry.driveMode === mode}>
-              {mode}
+          {['eco', 'normal', 'sport'].map((driveMode) => (
+            <button key={driveMode} type="button" className={telemetry.driveMode === driveMode ? 'is-active' : ''}
+              onClick={() => setDriveMode(driveMode)} aria-pressed={telemetry.driveMode === driveMode}>
+              {driveMode}
             </button>
           ))}
         </div>
@@ -220,9 +378,12 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
         <Dashboard
           car={car}
           engine={engine}
+          aspiration={aspiration}
           transmission={transmission}
           telemetry={telemetry}
           shiftPulse={shiftPulse}
+          ignitionSweep={ignitionSweep}
+          tyre={tyre}
         />
       </div>
 

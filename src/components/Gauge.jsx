@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 const START_ANGLE = -135
 const SWEEP = 270
@@ -34,12 +34,30 @@ export function Gauge({
   colorEnd,
   majorStep,
   valueSize = 46,
+  sweepKey = 0,
 }) {
   const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '')
+  const [sweep, setSweep] = useState(0)
   const fraction = clamp(value / max, 0, 1)
   const redlineFraction = clamp(redline / max, 0, 1)
-  const needleAngle = START_ANGLE + fraction * SWEEP
+  const displayedFraction = fraction + (1 - fraction) * sweep
+  const needleAngle = START_ANGLE + displayedFraction * SWEEP
   const endColor = colorEnd ?? color
+
+  useEffect(() => {
+    if (!sweepKey) return undefined
+    let frame = 0
+    const startedAt = performance.now()
+    const duration = 1250
+    const tick = (now) => {
+      const t = Math.min(1, (now - startedAt) / duration)
+      setSweep(Math.sin(t * Math.PI))
+      if (t < 1) frame = requestAnimationFrame(tick)
+      else setSweep(0)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [sweepKey])
 
   const majors = []
   const steps = Math.max(1, Math.round(max / majorStep))
@@ -54,7 +72,9 @@ export function Gauge({
     })
   }
 
-  const shownValue = displayValue ?? value.toLocaleString('en-US')
+  const shownValue = sweep > 0.001
+    ? Math.round(value + (max - value) * sweep).toLocaleString('en-US')
+    : (displayValue ?? value.toLocaleString('en-US'))
 
   return (
     <div className="gauge">
@@ -130,11 +150,11 @@ export function Gauge({
             y1={CY}
             x2={CX}
             y2={CY - 68}
-            stroke={fraction >= redlineFraction ? '#ff6b78' : endColor}
+            stroke={displayedFraction >= redlineFraction ? '#ff6b78' : endColor}
             strokeWidth="3.5"
             strokeLinecap="round"
           />
-          <circle cx={CX} cy={CY - 68} r="3" fill={fraction >= redlineFraction ? '#ff6b78' : endColor} />
+          <circle cx={CX} cy={CY - 68} r="3" fill={displayedFraction >= redlineFraction ? '#ff6b78' : endColor} />
         </g>
         <circle cx={CX} cy={CY} r="6" fill="#0b1119" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
 

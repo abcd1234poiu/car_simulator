@@ -3,7 +3,27 @@
  * No samples or copyrighted recordings — the note is generated live from RPM.
  */
 
+import { defaultAspirationForEngine } from '../constants/config.js'
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+const SAMPLE_BY_PROFILE = {
+  quiet: 2,
+  smooth: 2,
+  muscle: 0,
+  turbo: 3,
+  'twin-turbo': 4,
+  supercharged: 1,
+  vtec: 5,
+}
+
+const ASPIRATION_PROFILE = {
+  na: 'smooth',
+  turbo: 'turbo',
+  'twin-turbo': 'twin-turbo',
+  supercharger: 'supercharged',
+  vtec: 'vtec',
+}
 
 function createNoiseBuffer(context, seconds = 2) {
   const length = Math.floor(context.sampleRate * seconds)
@@ -35,9 +55,22 @@ export class EngineAudio {
     this.paused = false
     this.muted = false
     this.previewFrame = null
-    this.volume = 0.8
+    this.volume = 1.2
     this.workletNode = null
+    this.ignitionTimer = null
+    this.starterGain = null
+    this.starterSources = []
+    this.ignitionCatch = false
+    this.ignitionRevAt = null
+    this.sampleBuffers = null
+    this.sampleLoadPromise = null
+    this.sampleSource = null
+    this.sampleGain = null
+    this.sampleFilter = null
     this.lastState = null
+    this.aspiration = null
+    this.baseAspiration = null
+    this.voiceSound = null
   }
 
   ensureContext() {
@@ -58,9 +91,9 @@ export class EngineAudio {
     workletGain.connect(master)
 
     const compressor = ctx.createDynamicsCompressor()
-    compressor.threshold.value = -20
-    compressor.knee.value = 24
-    compressor.ratio.value = 5
+    compressor.threshold.value = -16
+    compressor.knee.value = 22
+    compressor.ratio.value = 4.5
     compressor.attack.value = 0.004
     compressor.release.value = 0.25
 
@@ -165,6 +198,7 @@ export class EngineAudio {
       subGain,
       whine,
       whineGain,
+      compressor,
     }
     this.applyMasterGain(0)
     this.loadWorklet(ctx)
@@ -207,24 +241,99 @@ export class EngineAudio {
     this.configureVoice()
   }
 
+  setAspiration(aspiration) {
+    this.aspiration = aspiration ?? null
+    this.configureVoice()
+  }
+
   configureVoice() {
     if (!this.nodes || !this.engine) return
-    const { sound } = this.engine
-    const profile = sound.profile
+    const baseSound = this.engine.sound
+    this.baseAspiration = defaultAspirationForEngine(this.engine)
+    if (!this.aspiration) this.aspiration = this.baseAspiration
+    const custom = this.aspiration.id !== this.baseAspiration.id
+    const profile = custom
+      ? ASPIRATION_PROFILE[this.aspiration.id] ?? baseSound.profile
+      : baseSound.profile
+    const aspirationSound = custom ? this.aspiration.sound : null
+    this.voiceSound = {
+      ...baseSound,
+      profile,
+      brightness: baseSound.brightness * (aspirationSound?.brightness ?? 1),
+      noise: baseSound.noise * (aspirationSound?.noise ?? 1),
+    }
     this.nodes.osc1.type = profile === 'quiet' || profile === 'smooth' ? 'triangle' :
       profile === 'muscle' || profile === 'supercharged' ? 'square' : 'sawtooth'
     this.nodes.osc2.type = profile === 'quiet' ? 'sine' :
       profile === 'vtec' || profile === 'twin-turbo' ? 'sawtooth' : 'triangle'
-    this.nodes.drive.curve = createDriveCurve(sound.drive)
+    this.nodes.drive.curve = createDriveCurve(baseSound.drive)
     this.workletNode?.port.postMessage({
       type: 'engine', profile, cylinders: this.engine.cylinders,
-      maxRpm: this.engine.maxRpm, volume: sound.volume,
+      maxRpm: this.engine.maxRpm, volume: this.voiceSound.volume,
     })
   }
 
-  start(engine) {
+  ensureEngineSamples(ctx) {
+    if (this.sampleBuffers) return Promise.resolve(this.sampleBuffers)
+    if (this.sampleLoadPromise) return this.sampleLoadPromise
+    this.sampleLoadPromise = Promise.all(
+      [0, 1, 2, 3, 4, 5].map(async (index) => {
+        const response = await fetch(`/audio/engine/loop_${index}.wav`)
+        if (!response.ok) throw new Error(`engine sample ${index}: HTTP ${response.status}`)
+        return ctx.decodeAudioData(await response.arrayBuffer())
+      }),
+    ).then((buffers) => {
+      if (this.context !== ctx) return null
+      this.sampleBuffers = buffers
+      if (this.started) this.startSampleEngine()
+      return buffers
+    }).catch((error) => {
+      console.warn('Engine sample pack unavailable; keeping synthesized audio', error)
+      this.sampleLoadPromise = null
+      return null
+    })
+    return this.sampleLoadPromise
+  }
+
+  startSampleEngine() {
+    if (!this.context || !this.nodes || !this.sampleBuffers || !this.started) return
+    this.stopSampleEngine()
+    const profile = this.voiceSound?.profile ?? 'smooth'
+    const buffer = this.sampleBuffers[SAMPLE_BY_PROFILE[profile] ?? 2] ?? this.sampleBuffers[0]
+    if (!buffer) return
+    const source = this.context.createBufferSource()
+    source.buffer = buffer
+    source.loop = true
+    source.playbackRate.value = 0.8
+    const filter = this.context.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 1500
+    filter.Q.value = 0.8
+    const gain = this.context.createGain()
+    gain.gain.value = 0
+    source.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.nodes.master)
+    source.start()
+    this.sampleSource = source
+    this.sampleGain = gain
+    this.sampleFilter = filter
+  }
+
+  stopSampleEngine() {
+    if (this.sampleSource) {
+      try { this.sampleSource.stop() } catch { /* already stopped */ }
+      this.sampleSource.disconnect()
+    }
+    this.sampleSource = null
+    this.sampleGain = null
+    this.sampleFilter = null
+  }
+
+  start(engine, aspiration) {
     this.engine = engine ?? this.engine
     if (!this.engine) return false
+    this.setAspiration(aspiration ?? this.aspiration)
     const ctx = this.ensureContext()
     if (!ctx) return false
     this.configureVoice()
@@ -234,20 +343,174 @@ export class EngineAudio {
     this.paused = false
     if (ctx.state === 'suspended') ctx.resume().catch(() => {})
 
-    this.update({ rpm: this.engine.idleRpm, throttle: 0.18 })
-    this.applyMasterGain(0.75, 0.35)
+    const flare = this.ignitionCatch
+    this.ignitionCatch = false
+    this.ensureEngineSamples(ctx)
+    if (this.sampleBuffers) this.startSampleEngine()
+    this.update({
+      rpm: this.engine.idleRpm + (flare ? 420 : 0),
+      throttle: flare ? 0.35 : 0.18,
+    })
+    this.applyMasterGain(0.9, 0.35)
+    return true
+  }
+
+  playStarter() {
+    if (!this.context || !this.nodes) return
+    const ctx = this.context
+    const now = ctx.currentTime
+    const out = ctx.createGain()
+    out.gain.setValueAtTime(0, now)
+    out.gain.linearRampToValueAtTime(0.2, now + 0.045)
+    out.gain.setValueAtTime(0.18, now + 0.52)
+    out.gain.exponentialRampToValueAtTime(0.001, now + 0.86)
+    out.connect(this.nodes.master)
+
+    // Low starter-motor rumble.
+    const motor = ctx.createOscillator()
+    motor.type = 'sawtooth'
+    motor.frequency.setValueAtTime(46, now)
+    motor.frequency.linearRampToValueAtTime(92, now + 0.72)
+    const motorFilter = ctx.createBiquadFilter()
+    motorFilter.type = 'lowpass'
+    motorFilter.frequency.setValueAtTime(180, now)
+    motorFilter.frequency.linearRampToValueAtTime(340, now + 0.7)
+    motorFilter.Q.value = 2.2
+    const motorGain = ctx.createGain()
+    motorGain.gain.value = 0.085
+    motor.connect(motorFilter)
+    motorFilter.connect(motorGain)
+    motorGain.connect(out)
+
+    // Starter gear whine.
+    const whine = ctx.createOscillator()
+    whine.type = 'triangle'
+    whine.frequency.setValueAtTime(280, now)
+    whine.frequency.linearRampToValueAtTime(560, now + 0.7)
+    const whineFilter = ctx.createBiquadFilter()
+    whineFilter.type = 'bandpass'
+    whineFilter.frequency.value = 720
+    whineFilter.Q.value = 2.6
+    const whineGain = ctx.createGain()
+    whineGain.gain.value = 0.022
+    whine.connect(whineFilter)
+    whineFilter.connect(whineGain)
+    whineGain.connect(out)
+
+    // Gear-mesh noise, deliberately rolled off at the top so it does not sound
+    // like a harsh buzz.
+    const noise = ctx.createBufferSource()
+    noise.buffer = createNoiseBuffer(ctx, 0.9)
+    const noiseBand = ctx.createBiquadFilter()
+    noiseBand.type = 'bandpass'
+    noiseBand.frequency.value = 1350
+    noiseBand.Q.value = 1.35
+    const noiseLow = ctx.createBiquadFilter()
+    noiseLow.type = 'lowpass'
+    noiseLow.frequency.value = 2100
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.value = 0.055
+    noise.connect(noiseBand)
+    noiseBand.connect(noiseLow)
+    noiseLow.connect(noiseGain)
+    noiseGain.connect(out)
+
+    // Rhythmic crank pulses.
+    const lfo = ctx.createOscillator()
+    lfo.type = 'sine'
+    lfo.frequency.value = 9.4
+    const lfoGain = ctx.createGain()
+    lfoGain.gain.value = 0.03
+    lfo.connect(lfoGain)
+    lfoGain.connect(out.gain)
+
+    // Firing attempts as the engine begins to catch.
+    const firing = ctx.createOscillator()
+    firing.type = 'triangle'
+    firing.frequency.setValueAtTime(48, now)
+    firing.frequency.linearRampToValueAtTime(74, now + 0.8)
+    const firingGain = ctx.createGain()
+    firingGain.gain.setValueAtTime(0, now)
+    firingGain.gain.setValueAtTime(0, now + 0.34)
+    firingGain.gain.linearRampToValueAtTime(0.07, now + 0.46)
+    firingGain.gain.linearRampToValueAtTime(0.035, now + 0.68)
+    firingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.82)
+    firing.connect(firingGain)
+    firingGain.connect(out)
+
+    // A soft compression thump as the engine catches.
+    const catchOsc = ctx.createOscillator()
+    catchOsc.type = 'sine'
+    catchOsc.frequency.setValueAtTime(92, now + 0.58)
+    catchOsc.frequency.exponentialRampToValueAtTime(54, now + 0.9)
+    const catchGain = ctx.createGain()
+    catchGain.gain.setValueAtTime(0, now)
+    catchGain.gain.setValueAtTime(0, now + 0.56)
+    catchGain.gain.linearRampToValueAtTime(0.09, now + 0.62)
+    catchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.92)
+    catchOsc.connect(catchGain)
+    catchGain.connect(out)
+
+    for (const source of [motor, whine, noise, lfo, firing, catchOsc]) {
+      source.start(now)
+      source.stop(now + 0.95)
+    }
+
+    this.starterGain = out
+    this.starterSources = [motor, whine, noise, lfo, firing, catchOsc]
+  }
+
+  startIgnition(engine, aspiration) {
+    this.engine = engine ?? this.engine
+    if (!this.engine) return false
+    this.setAspiration(aspiration ?? this.aspiration)
+    const ctx = this.ensureContext()
+    if (!ctx) return false
+    this.configureVoice()
+    this.stopPreview()
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+    this.started = false
+    this.paused = false
+    this.ignitionCatch = true
+    this.applyMasterGain(0.9, 0.03)
+    this.playStarter()
+    window.clearTimeout(this.ignitionTimer)
+    this.ignitionTimer = window.setTimeout(() => {
+      this.ignitionTimer = null
+      this.start(engine, aspiration)
+      this.ignitionRevAt = performance.now()
+    }, 820)
     return true
   }
 
   stop() {
     this.stopPreview()
+    this.stopSampleEngine()
+    window.clearTimeout(this.ignitionTimer)
+    this.ignitionTimer = null
+    if (this.starterGain) {
+      const now = this.context?.currentTime ?? 0
+      try {
+        this.starterGain.gain.cancelScheduledValues(now)
+        this.starterGain.gain.setTargetAtTime(0, now, 0.02)
+      } catch {
+        // The context may already be closed.
+      }
+      for (const source of this.starterSources) {
+        try { source.stop() } catch { /* already stopped */ }
+      }
+      this.starterGain = null
+      this.starterSources = []
+    }
     this.started = false
+    this.ignitionCatch = false
+    this.ignitionRevAt = null
     this.applyMasterGain(0, 0.15)
   }
 
   setMuted(muted) {
     this.muted = muted
-    this.applyMasterGain(this.started ? 0.75 : 0)
+    this.applyMasterGain(this.started ? 0.9 : 0)
   }
 
   setPaused(paused) {
@@ -262,10 +525,27 @@ export class EngineAudio {
 
   update({ rpm = 900, throttle = 0, boost = 0, limiter = false, shiftEvent = null }) {
     if (!this.started || !this.context || !this.engine || !this.nodes) return
+
+    // Short engine blip when the engine catches after ignition.
+    if (this.ignitionRevAt !== null) {
+      const elapsed = performance.now() - this.ignitionRevAt
+      const duration = 950
+      if (elapsed < duration) {
+        const t = elapsed / duration
+        const blip = Math.sin(t * Math.PI) ** 1.35
+        rpm = this.engine.idleRpm +
+          blip * (this.engine.redline * 0.42 - this.engine.idleRpm)
+        throttle = Math.max(throttle, 0.2 + blip * 0.6)
+        boost = Math.max(boost, blip * 0.55)
+      } else {
+        this.ignitionRevAt = null
+      }
+    }
+
     this.lastState = { rpm, throttle, boost, limiter }
     const nodes = this.nodes
     const now = this.context.currentTime
-    const sound = this.engine.sound
+    const sound = this.voiceSound ?? this.engine.sound
 
     if (this.workletNode) {
       this.workletNode.parameters.get('rpm').setTargetAtTime(clamp(rpm, 300, 12000), now, 0.025)
@@ -291,8 +571,24 @@ export class EngineAudio {
     nodes.lfo.frequency.setTargetAtTime(sound.lfoRate + revRatio * 22, now, 0.1)
     nodes.lfoGain.gain.setTargetAtTime(0.04 + load * 0.05, now, 0.1)
 
-    const engineLevel = (0.045 + load * 0.15 + revRatio * 0.06 + highCam * 0.035) * sound.volume
+    const engineLevel = (0.06 + load * 0.19 + revRatio * 0.08 + highCam * 0.045) * sound.volume
     nodes.engineGain.gain.setTargetAtTime(engineLevel, now, 0.045)
+
+    if (this.sampleSource && this.sampleGain && this.sampleFilter) {
+      const sampleLevel = (0.14 + load * 0.18 + revRatio * 0.10) *
+        (sound.volume ?? 1) * (sound.profile === 'quiet' ? 0.6 : 1)
+      this.sampleGain.gain.setTargetAtTime(sampleLevel, now, 0.08)
+      this.sampleFilter.frequency.setTargetAtTime(
+        clamp(650 + load * 1900 + revRatio * 1700, 500, 5200),
+        now,
+        0.08,
+      )
+      this.sampleSource.playbackRate.setTargetAtTime(
+        clamp(safeRpm / 3300, 0.58, 2.25),
+        now,
+        0.08,
+      )
+    }
 
     const cutoff = clamp(360 + base * 6.5 + load * 2400 + revRatio * 900, 400, 8000)
     nodes.filter.frequency.setTargetAtTime(cutoff * sound.brightness * (1 + highCam * 0.35), now, 0.05)
@@ -311,8 +607,9 @@ export class EngineAudio {
   }
 
   /** Looping rev animation used on the car-selection screen. */
-  preview(engine) {
+  preview(engine, aspiration) {
     this.engine = engine
+    this.aspiration = aspiration ?? this.aspiration
     const ctx = this.ensureContext()
     if (!ctx) return false
     this.configureVoice()
@@ -321,7 +618,9 @@ export class EngineAudio {
     this.stopPreview()
     this.started = true
     this.paused = false
-    this.applyMasterGain(0.7, 0.2)
+    this.ensureEngineSamples(ctx)
+    if (this.sampleBuffers) this.startSampleEngine()
+    this.applyMasterGain(0.85, 0.2)
 
     const startedAt = performance.now()
     const tick = (now) => {
@@ -341,10 +640,14 @@ export class EngineAudio {
       cancelAnimationFrame(this.previewFrame)
       this.previewFrame = null
     }
+    this.stopSampleEngine()
   }
 
   dispose() {
     this.stopPreview()
+    this.stopSampleEngine()
+    window.clearTimeout(this.ignitionTimer)
+    this.ignitionTimer = null
     if (this.context) {
       this.context.close().catch(() => {})
       this.context = null

@@ -155,6 +155,119 @@ export const ENGINES = {
   },
 }
 
+export const ASPIRATIONS = {
+  na: {
+    id: 'na',
+    name: 'Naturally Aspirated',
+    shortName: 'N/A',
+    badge: 'NA',
+    type: 'na',
+    description: 'Linear, instant response. No lag, no waiting — just the engine.',
+    torqueMultiplier: 1,
+    boostGain: 0,
+    spoolRpm: 0,
+    lag: 20,
+    sound: { whistle: 0, whine: 0, brightness: 1, noise: 1, blowOff: false, vtec: false },
+  },
+  turbo: {
+    id: 'turbo',
+    name: 'Single Turbo',
+    shortName: 'Turbo',
+    badge: 'TURBO',
+    type: 'turbo',
+    description: 'A big mid-range shove once the turbine spools. Lift for the blow-off.',
+    torqueMultiplier: 1.04,
+    boostGain: 0.5,
+    spoolRpm: 2200,
+    lag: 3.2,
+    sound: { whistle: 0.05, whine: 0, brightness: 1.14, noise: 1.18, blowOff: true, vtec: false },
+  },
+  'twin-turbo': {
+    id: 'twin-turbo',
+    name: 'Twin Turbo',
+    shortName: 'Twin Turbo',
+    badge: 'TT',
+    type: 'twin',
+    description: 'Two turbos, almost no lag and a savage top end.',
+    torqueMultiplier: 1.06,
+    boostGain: 0.64,
+    spoolRpm: 1600,
+    lag: 5.2,
+    sound: { whistle: 0.065, whine: 0, brightness: 1.2, noise: 1.32, blowOff: true, vtec: false },
+  },
+  supercharger: {
+    id: 'supercharger',
+    name: 'Supercharger',
+    shortName: 'Supercharged',
+    badge: 'SC',
+    type: 'supercharger',
+    description: 'Belt-driven boost from idle. Instant, linear and loud.',
+    torqueMultiplier: 1.05,
+    boostGain: 0.46,
+    spoolRpm: 700,
+    lag: 18,
+    sound: { whistle: 0, whine: 0.055, brightness: 1.06, noise: 1.12, blowOff: false, vtec: false },
+  },
+  vtec: {
+    id: 'vtec',
+    name: 'VTEC',
+    shortName: 'VTEC',
+    badge: 'VTEC',
+    type: 'vtec',
+    description: 'Mild below the cam change, wild above it. The classic high-rpm kick.',
+    torqueMultiplier: 1.02,
+    boostGain: 0,
+    spoolRpm: 0,
+    lag: 20,
+    vtecRpm: 5600,
+    vtecGain: 1.16,
+    sound: { whistle: 0, whine: 0, brightness: 1.12, noise: 0.96, blowOff: false, vtec: true },
+  },
+}
+
+export const clamp01 = (value) => Math.min(1, Math.max(0, value))
+
+/** Aspiration multiplier used for spec sheets (full boost / cam engaged). */
+export function aspirationFactorAtRpm(aspiration, rpm, redline) {
+  if (!aspiration) return 1
+  const base = aspiration.torqueMultiplier ?? 1
+  if (aspiration.type === 'turbo' || aspiration.type === 'twin') {
+    const span = Math.max(1, redline * 0.8 - aspiration.spoolRpm)
+    const spool = clamp01((rpm - aspiration.spoolRpm) / span)
+    return base * (1 + aspiration.boostGain * spool)
+  }
+  if (aspiration.type === 'supercharger') {
+    return base * (1 + aspiration.boostGain * clamp01(rpm / redline))
+  }
+  if (aspiration.type === 'vtec') {
+    const blend = clamp01((rpm - aspiration.vtecRpm) / 420)
+    return base * (1 + (aspiration.vtecGain - 1) * blend)
+  }
+  return base
+}
+
+/**
+ * Destination engines ship with a factory induction tune (turbo, twin-turbo,
+ * supercharger, VTEC or natural). The aspiration picker treats that tune as
+ * the baseline, so selecting it leaves the existing performance untouched.
+ */
+export function defaultAspirationForEngine(engine) {
+  const id = {
+    natural: 'na',
+    turbo: 'turbo',
+    'twin-turbo': 'twin-turbo',
+    supercharger: 'supercharger',
+    vtec: 'vtec',
+  }[engine?.induction] ?? 'na'
+  return getAspiration(id)
+}
+
+/** Torque multiplier of `aspiration` relative to the engine's factory tune. */
+export function aspirationRatioAtRpm(aspiration, baseAspiration, rpm, redline) {
+  const base = aspirationFactorAtRpm(baseAspiration, rpm, redline)
+  return base > 0 ? aspirationFactorAtRpm(aspiration, rpm, redline) / base : 1
+}
+
 export const TRANSMISSIONS = {
   manual: {
     id: 'manual',
@@ -227,6 +340,40 @@ export const TRANSMISSIONS = {
   },
 }
 
+export const ALL_TRANSMISSIONS = Object.freeze(Object.keys(TRANSMISSIONS))
+
+export const TYRES = {
+  street: {
+    id: 'street',
+    name: 'Street',
+    shortName: 'STREET',
+    badge: 'ST',
+    grip: 1,
+    wearRate: 0.4,
+    description: 'Long-lasting all-round road tyre. Predictable grip in every condition.',
+  },
+  sport: {
+    id: 'sport',
+    name: 'Sport',
+    shortName: 'SPORT',
+    badge: 'SP',
+    grip: 1.1,
+    wearRate: 0.65,
+    description: 'Softer performance compound with more lateral grip and faster wear.',
+  },
+  slick: {
+    id: 'slick',
+    name: 'Slick',
+    shortName: 'SLICK',
+    badge: 'SL',
+    grip: 1.22,
+    wearRate: 0.8,
+    description: 'Maximum dry grip. Heats up quickly, tears quickly and loses grip as it wears.',
+  },
+}
+export const TYRE_ORDER = ['street', 'sport', 'slick']
+export const DEFAULT_TYRE = TYRES.street.id
+
 export const CARS = [
   {
     id: 'metro-cab',
@@ -246,7 +393,7 @@ export const CARS = [
     seats: 4,
     engines: ['eco-i4', 'inline-4'],
     defaultEngine: 'eco-i4',
-    transmissions: ['automatic', 'cvt', 'dsg'],
+    transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'automatic',
   },
   {
@@ -266,7 +413,7 @@ export const CARS = [
     seats: 2,
     engines: ['inline-4', 'vtec-i4', 'twin-turbo-v6', 'v6'],
     defaultEngine: 'inline-4',
-    transmissions: ['manual', 'automatic', 'dsg', 'pdk'],
+    transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'manual',
   },
   {
@@ -286,7 +433,7 @@ export const CARS = [
     seats: 4,
     engines: ['v8', 'supercharged-v8'],
     defaultEngine: 'v8',
-    transmissions: ['manual', 'automatic', 'pdk'],
+    transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'manual',
   },
   {
@@ -306,7 +453,7 @@ export const CARS = [
     seats: 4,
     engines: ['v6', 'twin-turbo-v6', 'v8', 'supercharged-v8'],
     defaultEngine: 'v6',
-    transmissions: ['automatic', 'manual', 'dsg', 'pdk'],
+    transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'automatic',
   },
   {
@@ -326,7 +473,7 @@ export const CARS = [
     seats: 4,
     engines: ['inline-4', 'vtec-i4', 'eco-i4'],
     defaultEngine: 'inline-4',
-    transmissions: ['manual', 'automatic', 'cvt', 'dsg'],
+    transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'manual',
   },
 ]
@@ -343,6 +490,10 @@ export function getCar(carId) {
 
 export function getEngine(engineId) {
   return ENGINES[engineId] ?? ENGINES['inline-4']
+}
+
+export function getAspiration(aspirationId) {
+  return ASPIRATIONS[aspirationId] ?? ASPIRATIONS.na
 }
 
 export function getTransmission(transmissionId) {

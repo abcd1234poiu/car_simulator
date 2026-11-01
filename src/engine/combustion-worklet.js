@@ -135,7 +135,7 @@ class CombustionProcessor extends AudioWorkletProcessor {
 
       const raw = exhaust * (0.7 + load * 0.65) * fuelCut + intake + whine + shift + waste
       const sample = Math.tanh(raw * (1.35 + voice.grit + highCam * 0.3)) *
-        0.3 * voice.level * this.volume
+        0.38 * voice.level * this.volume
       output[i] = sample
       for (let channel = 1; channel < channels.length; channel += 1) channels[channel][i] = sample
     }

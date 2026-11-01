@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CARS, ENGINES, TRANSMISSIONS } from '../src/constants/config.js'
+import { CARS, ENGINES, TRANSMISSIONS, TYRES } from '../src/constants/config.js'
 import { VehiclePhysics } from '../src/engine/physics.js'
 import { performanceSummary } from '../src/engine/specs.js'
 import { InputController } from '../src/engine/input.js'
@@ -238,17 +238,16 @@ test('converter and CVT creep gently, while a manual car remains stopped', () =>
   assert.equal(manual.speed, 0)
 })
 
-test('automatic ranges provide reverse, neutral free-revving, and safe direction changes', () => {
+test('automatic ranges provide reverse, neutral free-revving, and direction changes', () => {
   for (const id of ['automatic', 'cvt', 'dsg', 'pdk']) {
     const car = create('eco-i4', id)
-    assert.equal(car.selectRange('R').ok, false, `${id}: brake interlock`)
-    for (let i = 0; i < 15; i += 1) car.update(0.05, { brake: 1 })
-    assert.equal(car.selectRange('R').ok, true, id)
+    assert.equal(car.selectRange('R').ok, true, `${id}: reverse can be selected without the brake`)
     for (let i = 0; i < 60; i += 1) car.update(0.05, { throttle: 0.6 })
     assert.ok(car.speed < -1, `${id}: should actually reverse`)
     assert.ok(car.distance < 0, `${id}: road position should move backward`)
     assert.ok(car.snapshot().speedKmh > 0 && car.snapshot().gearRatio < 0)
-    assert.equal(car.selectRange('D').ok, false, `${id}: cannot change direction while rolling`)
+    assert.equal(car.selectRange('D').ok, true, `${id}: can change direction while rolling`)
+    assert.ok(car.snapshot().mechanicalShock > 0, `${id}: direction change should shock the transmission`)
     assert.equal(car.selectRange('N').ok, true, `${id}: neutral while rolling`)
     const neutralSpeed = car.speed
     for (let i = 0; i < 10; i += 1) car.update(0.05, { throttle: 1 })
@@ -297,4 +296,111 @@ test('range keyboard shortcuts invoke reverse, neutral and drive selectors', () 
     input.handleKeyDown({ code, repeat: false, preventDefault() {} })
   }
   assert.deepEqual(selected, ['R', 'N', 'D'])
+})
+
+test('engine braking retards the car and ties rpm to road speed off throttle', () => {
+  const geared = create('inline-4', 'automatic')
+  for (let i = 0; i < 220; i += 1) geared.update(0.05, { throttle: 1 })
+  const speedBefore = geared.speed
+  const rpmBefore = geared.rpm
+  for (let i = 0; i < 40; i += 1) geared.update(0.05, {})
+  assert.ok(geared.speed < speedBefore - 0.8, 'geared car should slow noticeably')
+  assert.ok(geared.rpm < rpmBefore, 'rpm should follow the falling road speed')
+  assert.ok(geared.engineBraking > 0.1, 'engine braking force should be reported')
+
+  const neutral = create('inline-4', 'automatic')
+  for (let i = 0; i < 220; i += 1) neutral.update(0.05, { throttle: 1 })
+  neutral.selectRange('N')
+  for (let i = 0; i < 40; i += 1) neutral.update(0.05, {})
+  assert.ok(neutral.speed > geared.speed, 'neutral should coast farther than in gear')
+  assert.equal(neutral.engineBraking, 0)
+})
+
+test('ignition switches drive torque and engine idle on and off', () => {
+  const car = create('inline-4', 'automatic')
+  car.setIgnition(false)
+  assert.equal(car.snapshot().ignition, false)
+  for (let i = 0; i < 120; i += 1) car.update(0.05, { throttle: 1 })
+  assert.equal(car.speed, 0, 'engine off should not drive the car')
+  assert.ok(car.rpm < 50, 'engine off should show no rpm')
+
+  car.setIgnition(true)
+  assert.equal(car.snapshot().ignition, true)
+  for (let i = 0; i < 120; i += 1) car.update(0.05, { throttle: 1 })
+  assert.ok(car.speed > 5, 'engine on should drive the car')
+  assert.ok(car.rpm > car.engine.idleRpm)
+})
+
+
+test('shifting between D and R at speed produces a violent shock instead of a hard block', () => {
+  const car = create('inline-4', 'automatic')
+  for (let i = 0; i < 160; i += 1) car.update(0.05, { throttle: 1 })
+  const speedBefore = car.speed
+  assert.ok(speedBefore > 8)
+  const result = car.selectRange('R')
+  assert.equal(result.ok, true)
+  assert.ok(car.snapshot().mechanicalShock > 0.2)
+  for (let i = 0; i < 40; i += 1) car.update(0.05, {})
+  assert.ok(car.speed < speedBefore - 3, 'the car should be braked hard by the direction shock')
+  assert.ok(car.speed <= 0.001 || car.gear === -1, 'reverse remains engaged after the shock')
+})
+
+test('handbrake is exposed in telemetry and slows the car harder', () => {
+  const car = create('inline-4', 'automatic')
+  for (let i = 0; i < 160; i += 1) car.update(0.05, { throttle: 1 })
+  const before = car.speed
+  const snapshot = car.update(0.05, { handbrake: true })
+  assert.equal(snapshot.handbrake, true)
+  assert.ok(snapshot.speed < before)
+})
+
+test('touch steering is analog and Space is the computer handbrake', () => {
+  const input = new InputController()
+  input.setTouch('steer', -0.65)
+  let controls = input.update(0.2)
+  assert.ok(controls.steer < -0.2)
+  input.setTouch('steer', 0)
+  input.setTouch('handbrake', true)
+  controls = input.update(0.2)
+  assert.equal(controls.handbrake, true)
+
+  input.handleKeyDown({ code: 'Space', repeat: false, preventDefault() {} })
+  controls = input.update(0.05)
+  assert.equal(controls.handbrake, true)
+})
+
+test('manual clutch has a progressive bite point', () => {
+  const make = () => {
+    const car = create('eco-i4', 'manual')
+    for (let i = 0; i < 20; i += 1) car.update(0.05, { clutch: 1 })
+    assert.equal(car.selectRange('D').ok, true)
+    return car
+  }
+  const slipping = make()
+  for (let i = 0; i < 80; i += 1) slipping.update(0.05, { throttle: 1, clutch: 0.55 })
+  const engaged = make()
+  for (let i = 0; i < 80; i += 1) engaged.update(0.05, { throttle: 1, clutch: 0 })
+  assert.ok(slipping.speed > 0, 'partial clutch should still transfer some torque')
+  assert.ok(slipping.speed < engaged.speed, 'slipping clutch should accelerate less')
+  assert.ok(slipping.snapshot().clutchBite > 0 && slipping.snapshot().clutchBite < 1)
+})
+
+
+test('tyre compounds change grip and wear with sliding', () => {
+  const street = new VehiclePhysics({
+    car: CARS[0], engine: ENGINES['inline-4'],
+    transmission: TRANSMISSIONS.automatic, tyre: 'street',
+  })
+  const slick = new VehiclePhysics({
+    car: CARS[0], engine: ENGINES['inline-4'],
+    transmission: TRANSMISSIONS.automatic, tyre: 'slick',
+  })
+  assert.ok(slick.snapshot().tyreGrip > street.snapshot().tyreGrip)
+  assert.equal(street.snapshot().tyreCompound, TYRES.street.id)
+  assert.equal(slick.snapshot().tyreCompound, TYRES.slick.id)
+
+  for (let i = 0; i < 160; i += 1) slick.update(0.05, { throttle: 1 })
+  for (let i = 0; i < 160; i += 1) slick.update(0.05, { throttle: 1, handbrake: true })
+  assert.ok(slick.snapshot().tyreWear > 0)
+  assert.ok(slick.snapshot().tyreGrip < slick.baseGrip)
 })
