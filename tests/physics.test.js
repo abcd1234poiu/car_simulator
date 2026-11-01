@@ -54,6 +54,41 @@ test('CVT varies its ratio in D and allows virtual manual gears', () => {
   assert.notEqual(car.gear, gear)
 })
 
+test('full-throttle sport shifting does not stick on the rev limiter', () => {
+  const meridian = CARS.find((car) => car.id === 'meridian-gt')
+  const car = create('v6', 'dsg', meridian)
+  car.setDriveMode('sport')
+  car.selectRange('D')
+
+  for (let i = 0; i < 240; i += 1) car.update(0.05, { throttle: 1 })
+  assert.ok(car.gear >= 3,
+    `Meridian GT DSG should leave second gear by 12 s, stayed in ${car.gear}`)
+  assert.ok(car.rpm <= ENGINES.v6.maxRpm + 1, `rpm ${car.rpm} exceeded max RPM`)
+
+  for (const model of CARS) {
+    for (const engineId of model.engines) {
+      for (const gearboxId of ['automatic', 'dsg', 'pdk', 'cvt']) {
+        const vehicle = create(engineId, gearboxId, model)
+        vehicle.setDriveMode('sport')
+        vehicle.selectRange('D')
+        let limiterRun = 0
+        let worstLimiterRun = 0
+        for (let i = 0; i < 600; i += 1) {
+          vehicle.update(0.05, { throttle: 1 })
+          if (vehicle.gear < vehicle.gearCount && vehicle.limiter) {
+            limiterRun += 0.05
+            worstLimiterRun = Math.max(worstLimiterRun, limiterRun)
+          } else {
+            limiterRun = 0
+          }
+        }
+        assert.ok(worstLimiterRun < 1.5,
+          `${model.id}/${engineId}/${gearboxId} spent ${worstLimiterRun}s on the limiter`)
+      }
+    }
+  }
+})
+
 test('drive modes and traction control appear in telemetry', () => {
   const car = create()
   assert.equal(car.setDriveMode('sport'), true)

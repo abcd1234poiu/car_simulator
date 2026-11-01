@@ -1710,7 +1710,7 @@ export class CityScene {
     const spin = (signedSpeed * step) / 0.34
     for (const wheel of this.wheels) {
       wheel.spin.rotation.x -= spin
-      if (wheel.front) wheel.pivot.rotation.y = steer * 0.34
+      if (wheel.front) wheel.pivot.rotation.y = steer * 0.55
     }
 
     this.brakeLightMaterial.emissiveIntensity = braking > 0.08 ? 2.9 : 0.35

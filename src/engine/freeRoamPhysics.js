@@ -90,7 +90,8 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
 
     const speedAbs = Math.abs(this.speed)
     const speedRatio = clamp(speedAbs / 60, 0, 1)
-    const maxSteer = 0.9 - 0.42 * speedRatio
+    // Up to ~60° of road-wheel lock at parking speeds, tightening with speed.
+    const maxSteer = 1.05 - 0.5 * speedRatio
     // The shared input controller reports left as positive; the bicycle model
     // below uses right as positive, so invert here.
     const steerAngle = -this.steer * maxSteer
@@ -100,11 +101,13 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
       (handbrake ? 0.45 : 1) * (this.tractionControl ? 1 : 0.85)
     let yawTarget
     if (speedAbs < 2.2) {
-      yawTarget = clamp(kinematicYaw, -1.85, 1.85)
+      yawTarget = clamp(kinematicYaw, -2.1, 2.1)
     } else {
-      const yawLimit = (lateralGrip / speedAbs) * 1.35
+      const yawLimit = (lateralGrip / speedAbs) * 1.5
       yawTarget = clamp(kinematicYaw, -yawLimit, yawLimit)
-      if (handbrake) yawTarget += this.steer * 1.3 * clamp(speedAbs / 16, 0, 1)
+      // Handbrake yaw assist must follow the same handedness as the steering
+      // input (left is positive steer, which produces a negative yaw).
+      if (handbrake) yawTarget -= this.steer * Math.sign(this.speed) * 1.5 * clamp(speedAbs / 16, 0, 1)
 
       // Keyboard steer assist: when the driver is not actively steering, ease
       // the heading back toward the road direction under the car. This makes
@@ -118,7 +121,7 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
         }
       }
 
-      yawTarget = clamp(yawTarget, -yawLimit * 1.6, yawLimit * 1.6)
+      yawTarget = clamp(yawTarget, -yawLimit * 1.8, yawLimit * 1.8)
     }
 
     this.yawRate = approach(this.yawRate, yawTarget, step, handbrake ? 4 : 8)

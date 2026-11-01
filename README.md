@@ -79,7 +79,8 @@ and `npm run build` to create a production build.
   automatic, CVT, DSG, and PDK. They have distinct launch, shift timing, torque
   handoff, and RPM behavior. Automatic gearboxes switch between D and manual M
   mode; the dashboard shows D1, D2, etc. CVT varies continuously in D and
-  displays a virtual gear step.
+  displays a virtual gear step. At wide-open throttle, automatic boxes upshift
+  just below the redline instead of holding a gear against the rev limiter.
 - Manual clutch has a progressive bite point: holding **C** disconnects drive
   and lets the engine free-rev, while partially releasing it transfers torque
   gradually for smoother launches and hill starts.
@@ -89,7 +90,11 @@ and `npm run build` to create a production build.
   once worn. Hard cornering, handbrake use and wheelspin produce visible tyre
   smoke and acceleration/steering feel changes.
 - Increased steering lock and yaw response, giving sharper low-speed corners
-  while the speed-sensitive limit keeps high-speed steering controllable.
+  (up to ~60° of road-wheel angle) while the speed-sensitive limit keeps
+  high-speed steering controllable. The mobile steering wheel turns further,
+  needs less drag for full lock and shows the wheel angle in degrees.
+  The handbrake yaw assist follows the same steering direction, so a left-hand
+  handbrake turn rotates left.
 - All gearboxes support reverse and neutral. The on-screen R–N–D/1 selector
   works on desktop and mobile; neutral disconnects the engine and lets it
   free-rev, and the odometer records distance in either direction. Direction can
@@ -117,6 +122,11 @@ and `npm run build` to create a production build.
   V8 firing cadence, VTEC high-cam character, turbo release, supercharger whine,
   and shift transients. An oscillator fallback is used if AudioWorklet is
   unavailable.
+- Real engine recordings are layered under the synthesized voice and pitch-shifted
+  with RPM, so the idle, revs and overrun sound like a recording rather than a
+  pure oscillator. Performance engines crackle and bang on upshifts, hard
+  lift-off and overrun; quieter engines give a soft exhaust burble, and the
+  engine catches with a short exhaust pop after ignition.
 - Analog on-screen gas and brake pedals on desktop and mobile. Manual cars also
   have a clutch pedal and shift paddles. Mobile steering uses a draggable
   steering wheel for fine analog control, and a dedicated handbrake button is

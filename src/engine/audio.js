@@ -55,7 +55,7 @@ export class EngineAudio {
     this.paused = false
     this.muted = false
     this.previewFrame = null
-    this.volume = 1.2
+    this.volume = 1.45
     this.workletNode = null
     this.ignitionTimer = null
     this.starterGain = null
@@ -67,6 +67,9 @@ export class EngineAudio {
     this.sampleSource = null
     this.sampleGain = null
     this.sampleFilter = null
+    this.lastThrottle = 0
+    this.lastRpm = 0
+    this.popCooldown = 0
     this.lastState = null
     this.aspiration = null
     this.baseAspiration = null
@@ -352,6 +355,12 @@ export class EngineAudio {
       throttle: flare ? 0.35 : 0.18,
     })
     this.applyMasterGain(0.9, 0.35)
+    if (flare) {
+      const profile = this.voiceSound?.profile ?? this.engine.sound?.profile
+      const hot = ['muscle', 'turbo', 'twin-turbo', 'supercharged', 'vtec'].includes(profile)
+      this.playExhaustPop(hot ? 0.6 : 0.3)
+      this.popCooldown = this.context.currentTime + 0.5
+    }
     return true
   }
 
@@ -361,8 +370,8 @@ export class EngineAudio {
     const now = ctx.currentTime
     const out = ctx.createGain()
     out.gain.setValueAtTime(0, now)
-    out.gain.linearRampToValueAtTime(0.2, now + 0.045)
-    out.gain.setValueAtTime(0.18, now + 0.52)
+    out.gain.linearRampToValueAtTime(0.26, now + 0.045)
+    out.gain.setValueAtTime(0.23, now + 0.52)
     out.gain.exponentialRampToValueAtTime(0.001, now + 0.86)
     out.connect(this.nodes.master)
 
@@ -460,6 +469,50 @@ export class EngineAudio {
     this.starterSources = [motor, whine, noise, lfo, firing, catchOsc]
   }
 
+  playExhaustPop(intensity = 1) {
+    if (!this.context || !this.nodes) return
+    const ctx = this.context
+    const now = ctx.currentTime
+    const out = ctx.createGain()
+    out.gain.setValueAtTime(0, now)
+    out.gain.linearRampToValueAtTime(0.4 * intensity, now + 0.005)
+    out.gain.exponentialRampToValueAtTime(0.001, now + 0.16)
+    out.connect(this.nodes.master)
+
+    const noise = ctx.createBufferSource()
+    noise.buffer = createNoiseBuffer(ctx, 0.2)
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.value = 150 + Math.random() * 320
+    band.Q.value = 1.15
+    const low = ctx.createBiquadFilter()
+    low.type = 'lowpass'
+    low.frequency.value = 1800
+    const drive = ctx.createWaveShaper()
+    drive.curve = createDriveCurve(2.4)
+    drive.oversample = '2x'
+    noise.connect(band)
+    band.connect(low)
+    low.connect(drive)
+    drive.connect(out)
+
+    const thump = ctx.createOscillator()
+    thump.type = 'sine'
+    thump.frequency.setValueAtTime(72 + Math.random() * 45, now)
+    thump.frequency.exponentialRampToValueAtTime(42, now + 0.18)
+    const thumpGain = ctx.createGain()
+    thumpGain.gain.setValueAtTime(0, now)
+    thumpGain.gain.linearRampToValueAtTime(0.2 * intensity, now + 0.008)
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2)
+    thump.connect(thumpGain)
+    thumpGain.connect(out)
+
+    noise.start(now)
+    noise.stop(now + 0.22)
+    thump.start(now)
+    thump.stop(now + 0.22)
+  }
+
   startIgnition(engine, aspiration) {
     this.engine = engine ?? this.engine
     if (!this.engine) return false
@@ -505,6 +558,7 @@ export class EngineAudio {
     this.started = false
     this.ignitionCatch = false
     this.ignitionRevAt = null
+    this.popCooldown = 0
     this.applyMasterGain(0, 0.15)
   }
 
@@ -547,6 +601,25 @@ export class EngineAudio {
     const now = this.context.currentTime
     const sound = this.voiceSound ?? this.engine.sound
 
+    const performanceProfile = ['muscle', 'turbo', 'twin-turbo', 'supercharged', 'vtec']
+      .includes(sound.profile)
+    const throttleDrop = this.lastThrottle - throttle
+    const overrun = throttle < 0.12 && rpm > 2200
+    if (now >= this.popCooldown) {
+      if (performanceProfile) {
+        if (shiftEvent || throttleDrop > 0.55 || (overrun && Math.random() < 0.02)) {
+          this.playExhaustPop(shiftEvent ? 0.95 : 0.55 + Math.random() * 0.45)
+          this.popCooldown = now + (shiftEvent ? 0.12 : 0.22 + Math.random() * 0.45)
+        }
+      } else if (overrun && (throttleDrop > 0.6 || Math.random() < 0.012)) {
+        // Even a quiet engine burbles softly when you lift off at revs.
+        this.playExhaustPop(0.32 + Math.random() * 0.22)
+        this.popCooldown = now + 0.55 + Math.random() * 0.7
+      }
+    }
+    this.lastThrottle = throttle
+    this.lastRpm = rpm
+
     if (this.workletNode) {
       this.workletNode.parameters.get('rpm').setTargetAtTime(clamp(rpm, 300, 12000), now, 0.025)
       this.workletNode.parameters.get('throttle').setTargetAtTime(clamp(throttle, 0, 1), now, 0.035)
@@ -571,12 +644,12 @@ export class EngineAudio {
     nodes.lfo.frequency.setTargetAtTime(sound.lfoRate + revRatio * 22, now, 0.1)
     nodes.lfoGain.gain.setTargetAtTime(0.04 + load * 0.05, now, 0.1)
 
-    const engineLevel = (0.06 + load * 0.19 + revRatio * 0.08 + highCam * 0.045) * sound.volume
+    const engineLevel = (0.09 + load * 0.2 + revRatio * 0.09 + highCam * 0.045) * sound.volume
     nodes.engineGain.gain.setTargetAtTime(engineLevel, now, 0.045)
 
     if (this.sampleSource && this.sampleGain && this.sampleFilter) {
-      const sampleLevel = (0.14 + load * 0.18 + revRatio * 0.10) *
-        (sound.volume ?? 1) * (sound.profile === 'quiet' ? 0.6 : 1)
+      const sampleLevel = (0.3 + load * 0.3 + revRatio * 0.16) *
+        (sound.volume ?? 1) * (sound.profile === 'quiet' ? 0.8 : 1)
       this.sampleGain.gain.setTargetAtTime(sampleLevel, now, 0.08)
       this.sampleFilter.frequency.setTargetAtTime(
         clamp(650 + load * 1900 + revRatio * 1700, 500, 5200),
@@ -584,7 +657,7 @@ export class EngineAudio {
         0.08,
       )
       this.sampleSource.playbackRate.setTargetAtTime(
-        clamp(safeRpm / 3300, 0.58, 2.25),
+        clamp(safeRpm / 2800, 0.68, 2.3),
         now,
         0.08,
       )

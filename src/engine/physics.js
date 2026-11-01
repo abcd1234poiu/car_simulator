@@ -426,6 +426,12 @@ export class VehiclePhysics {
         (this.transmission.kickdownThreshold ?? 0.85) && this.kickdownArmed
       const hasRealThrottle = throttleTarget > 0.08 || this.throttle > 0.08
       const upshiftHysteresis = 170 + (this.transmission.kind === 'dual-clutch' ? 80 : 0)
+      // The hysteresis can push the trigger above the redline (and in Sport
+      // beyond the RPM the car can actually reach in gear), which leaves the
+      // car bouncing off the limiter without shifting. Cap it just below the
+      // limiter so every car/gearbox upshifts at the redline.
+      const upshiftRpm = Math.min(upRpm + upshiftHysteresis, this.engine.redline - 60)
+      const atRevLimit = this.rpm >= this.engine.redline - 50
       if (wantsKickdown || this.sportDownshiftPending) {
         const targetGear = this.bestKickdownGear(!wantsKickdown)
         if (wantsKickdown) this.kickdownArmed = false
@@ -434,8 +440,8 @@ export class VehiclePhysics {
           this.beginShift(targetGear, 'down')
         }
       }
-      if (!this.shiftEvent && this.rpm > upRpm + upshiftHysteresis && this.gear < this.gearCount &&
-        hasRealThrottle && nextGearViable) {
+      if (!this.shiftEvent && this.gear < this.gearCount &&
+        hasRealThrottle && nextGearViable && (this.rpm > upshiftRpm || atRevLimit)) {
         this.beginShift(this.gear + 1, 'up')
       } else if (!this.shiftEvent &&
         (this.rpm < downRpm * 0.94 ||

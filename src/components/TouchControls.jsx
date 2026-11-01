@@ -55,13 +55,14 @@ function TouchSteering({ value, setTouch }) {
     if (!drag) return
     const delta = normalize(angleAt(event) - drag.angle)
     // Left rotation is positive steer in the physics model.
-    setTouch('steer', Math.max(-1, Math.min(1, drag.value - delta / (Math.PI / 2))))
+    setTouch('steer', Math.max(-1, Math.min(1, drag.value - delta / (Math.PI / 3))))
   }
   const release = () => {
     dragRef.current = null
     setTouch('steer', 0)
   }
   const percent = Math.round((value ?? 0) * 100)
+  const angle = Math.round(Math.abs(value ?? 0) * 60)
 
   return (
     <div
@@ -87,7 +88,7 @@ function TouchSteering({ value, setTouch }) {
     >
       <div
         className="steer-wheel-rotor"
-        style={{ transform: `rotate(${-(value ?? 0) * 120}deg)` }}
+        style={{ transform: `rotate(${-(value ?? 0) * 170}deg)` }}
         aria-hidden="true"
       >
         <svg viewBox="0 0 100 100" className="steer-wheel-svg">
@@ -98,7 +99,7 @@ function TouchSteering({ value, setTouch }) {
         </svg>
       </div>
       <span className="steer-caption">
-        {percent > 0 ? `L ${percent}` : percent < 0 ? `R ${-percent}` : 'STEER'}
+        {percent > 0 ? `L ${angle}°` : percent < 0 ? `R ${angle}°` : 'STEER'}
       </span>
     </div>
   )

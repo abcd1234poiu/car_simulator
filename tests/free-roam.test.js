@@ -145,6 +145,20 @@ test('free roam steering changes heading in the requested direction', () => {
   assert.ok(right.heading > 0, 'right input should turn toward positive heading')
 })
 
+test('handbrake drift keeps the same steering direction as normal driving', () => {
+  const vehicle = create()
+  vehicle.selectRange('D')
+  drive(vehicle, 1.5, { throttle: 0.8 })
+  const left = drive(vehicle, 1.2, { throttle: 0.5, steer: 1, handbrake: true })
+  assert.ok(left.heading < 0, `handbrake + left should turn left: ${left.heading}`)
+
+  vehicle.reset()
+  vehicle.selectRange('D')
+  drive(vehicle, 1.5, { throttle: 0.8 })
+  const right = drive(vehicle, 1.2, { throttle: 0.5, steer: -1, handbrake: true })
+  assert.ok(right.heading > 0, `handbrake + right should turn right: ${right.heading}`)
+})
+
 test('free roam detects grass and clamps the car inside the city', () => {
   const vehicle = create()
   vehicle.x = PARKS[0].x

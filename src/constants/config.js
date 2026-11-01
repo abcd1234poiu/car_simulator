@@ -151,7 +151,7 @@ export const ENGINES = {
       { rpm: 4000, torque: 180 }, { rpm: 5200, torque: 165 }, { rpm: 6100, torque: 140 },
       { rpm: 6500, torque: 110 },
     ],
-    sound: { profile: 'quiet', harmonic: 2, sub: 0.1, noise: 0.12, brightness: 0.62, drive: 0.5, volume: 0.42, lfoRate: 24 },
+    sound: { profile: 'quiet', harmonic: 2, sub: 0.1, noise: 0.12, brightness: 0.62, drive: 0.5, volume: 0.6, lfoRate: 24 },
   },
 }
 
