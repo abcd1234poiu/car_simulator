@@ -32,6 +32,36 @@
   display: block;
 }
 
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(3, 8, 14, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.pause-card {
+  width: min(540px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: #111b27;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
+}
+
+.pause-card h2 { margin: 12px 0 18px; }
+.controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+.control-row { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
+.control-keys { color: var(--accent); font-family: var(--font-mono); white-space: nowrap; }
+.control-action { color: var(--muted); text-align: right; }
+.pause-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+
 .drive-vignette {
   position: absolute;
   inset: 0;
@@ -153,6 +183,26 @@
 .drive-settings button.is-active { color: #04120f; background: var(--accent); }
 .drive-settings .setting-toggle { border: 1px solid var(--line-strong); }
 .drive-settings .setting-toggle.is-danger { color: #ff9aa3; border-color: rgba(255,77,94,0.5); background: rgba(255,77,94,0.12); }
+
+.live-suspension {
+  position: absolute;
+  z-index: 12;
+  top: 126px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(280px, calc(100vw - 36px));
+  padding: 12px 14px;
+  border: 1px solid rgba(92, 243, 213, 0.35);
+  border-radius: 12px;
+  background: rgba(8, 18, 26, 0.94);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  color: var(--muted);
+  font: 700 10px var(--font-mono);
+}
+.live-suspension > strong { display: block; color: var(--accent); margin-bottom: 10px; letter-spacing: .12em; }
+.live-suspension label { display: block; margin-top: 8px; }
+.live-suspension label span { display: block; margin-bottom: 5px; }
+.live-suspension input { width: 100%; accent-color: var(--accent); }
 
 .range-selector {
   position: absolute;
@@ -672,6 +722,8 @@
 }
 
 @media (max-width: 620px) {
+  .pause-card { padding: 18px; }
+  .controls-grid { grid-template-columns: 1fr; }
   .overview-map {
     padding: 14px 14px 160px;
   }

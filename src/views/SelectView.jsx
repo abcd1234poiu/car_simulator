@@ -16,6 +16,8 @@ import {
   TYRES,
   TYRE_ORDER,
   DEFAULT_TYRE,
+  DEFAULT_SUSPENSION,
+  SUSPENSION_PRESETS,
   DEFAULT_SELECTION,
   defaultAspirationForEngine,
   getAspiration,
@@ -25,6 +27,7 @@ import {
 } from '../constants/config.js'
 import { peakPowerHp, peakTorqueNm, performanceSummary } from '../engine/specs.js'
 import { CarSilhouette } from '../components/CarSilhouette.jsx'
+import { CarPreview3D } from '../components/CarPreview3D.jsx'
 import '../styles/select.css'
 
 export function SelectView({ audio, muted, onToggleMute, onStart }) {
@@ -35,6 +38,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
   )
   const [transmissionId, setTransmissionId] = useState(DEFAULT_SELECTION.transmissionId)
   const [tyreId, setTyreId] = useState(DEFAULT_TYRE)
+  const [suspension, setSuspension] = useState(DEFAULT_SUSPENSION)
   const [preview, setPreview] = useState({ engineId: null, aspirationId: null, active: false })
 
   const car = getCar(carId)
@@ -91,7 +95,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
 
   const start = () => {
     audio.stopPreview()
-    onStart(car, engine, transmission, aspiration, tyre)
+    onStart(car, engine, transmission, aspiration, tyre, suspension)
   }
 
   return (
@@ -110,7 +114,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           <span className="brand-tag">DRIVER SIM</span>
         </div>
         <div className="nav-actions">
-          <span className="nav-note">Open-city free roam · dispatch fares on the live city map</span>
+          <span className="nav-note">Two connected cities · hills, bridge and autobahn driving</span>
           <button
             type="button"
             className="icon-button"
@@ -138,9 +142,10 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
             <p className="hero-copy">
               Choose your cab, then head straight into the open world. Accept a fare on
               the dispatch phone whenever you like, follow the live map to each pickup
-              and drop-off, and explore Metro City plus the A1-linked towns of Riverside,
-              Northgate, Southport, Highland and Suncoast — plus the Genting and Batang
-              mountain passes. Taxi work and free roam are the same session.
+              and drop-off. Explore a roads-only, GTA V-inspired Southern California
+              world from Los Santos and Vinewood to Sandy Shores and Paleto Bay.
+              Cross the A7 River Bridge to the larger Bayview City.
+              Taxi work and free roam are the same session.
             </p>
             <div className="hero-stats">
               <div>
@@ -209,8 +214,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
           </section>
 
           <p className="footnote">
-            Original audio, generated in your browser with the Web Audio API. No recordings
-            or copyrighted samples are used.
+            Engine sound combines Web Audio synthesis with CC0 sample loops.
           </p>
         </div>
 
@@ -220,7 +224,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
               <span className="summary-label">YOUR TAXI</span>
               <span className="summary-class">{car.className}</span>
             </div>
-            <CarSilhouette car={car} />
+            <CarPreview3D car={car} />
             <div className="summary-name">{car.name}</div>
             <div className="summary-line">
               {aspiration.shortName} {engine.name} · {transmission.shortName} · {tyre.shortName} · {car.drivetrain}
@@ -366,15 +370,46 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
             </p>
           </section>
 
+          <section className="config-section">
+            <div className="config-head">
+              <span className="step">06</span>
+              <h3>Suspension &amp; absorbers</h3>
+              <span className="config-hint">CUSTOM TUNE</span>
+            </div>
+            <div className="suspension-presets">
+              {Object.entries(SUSPENSION_PRESETS).map(([id, preset]) => (
+                <button key={id} type="button"
+                  className={Math.abs(suspension.spring - preset.spring) < 0.01 &&
+                    Math.abs(suspension.damper - preset.damper) < 0.01 ? 'is-active' : ''}
+                  onClick={() => setSuspension(preset)}>
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+            <label className="suspension-slider">
+              <span>Spring stiffness <strong>{Math.round(suspension.spring * 100)}%</strong></span>
+              <input type="range" min="0" max="100" value={Math.round(suspension.spring * 100)}
+                onChange={(event) => setSuspension((value) => ({ ...value, spring: Number(event.target.value) / 100 }))} />
+            </label>
+            <label className="suspension-slider">
+              <span>Absorber damping <strong>{Math.round(suspension.damper * 100)}%</strong></span>
+              <input type="range" min="0" max="100" value={Math.round(suspension.damper * 100)}
+                onChange={(event) => setSuspension((value) => ({ ...value, damper: Number(event.target.value) / 100 }))} />
+            </label>
+            <p className="transmission-note">
+              Softer springs absorb rough roads; stiffer springs sharpen turn-in.
+              More damping settles pitch and roll faster.
+            </p>
+          </section>
+
           <div className="start-panel">
             <div className="session-brief">
               <span className="session-brief-badge">CITY SHIFT</span>
               <strong>Free roam + taxi dispatch</strong>
               <small>
-                Explore Metro City, Riverside, Northgate, Southport, Highland and
-                Suncoast, linked by the A1 autobahn and exit links. Accept fares from
-                the in-game phone whenever you want — one world, one map, no mode
-                switch.
+                Drive Los Santos, climb the hills, cross the A7 River Bridge to
+                Bayview City and take the autobahn ring. Tune the suspension,
+                then accept fares anywhere in one continuous world.
               </small>
             </div>
 

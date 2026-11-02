@@ -12,15 +12,15 @@ import {
   Power,
   X,
 } from 'lucide-react'
-import { CityScene } from '../engine/cityScene.js'
+import { RoadScene } from '../engine/roadScene.js'
 import { useDrivingSession } from '../hooks/useDrivingSession.js'
 import { Dashboard } from '../components/Dashboard.jsx'
 import { TouchControls } from '../components/TouchControls.jsx'
 import { DispatchPhone } from '../components/DispatchPhone.jsx'
-import { Minimap } from '../maps/Minimap.jsx'
+import { RoadMap } from '../maps/RoadMap.jsx'
 import { useTaxiDispatch } from '../hooks/useTaxiDispatch.js'
 import { formatDistance, remainingDistance } from '../taxi/dispatch.js'
-import { TELEPORT_POINTS, cityLabelAt, distanceBetween } from '../maps/city.js'
+import { TELEPORT_POINTS, cityLabelAt, distanceBetween } from '../maps/roadWorld.js'
 import '../styles/drive.css'
 import '../styles/taxi.css'
 
@@ -48,13 +48,14 @@ const STATUS_COPY = {
 }
 
 export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
-  const { car, engine, transmission, aspiration, tyre } = session
+  const { car, engine, transmission, aspiration, tyre, suspension } = session
   const canvasRef = useRef(null)
   const sceneRef = useRef(null)
   const [sceneError, setSceneError] = useState(false)
   const [phoneOpen, setPhoneOpen] = useState(true)
   const [overview, setOverview] = useState(false)
   const [destination, setDestination] = useState(null)
+  const [tuningOpen, setTuningOpen] = useState(false)
 
   const {
     telemetry,
@@ -73,6 +74,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
     requestRange,
     setDriveMode,
     toggleTractionControl,
+    tuneSuspension,
     toggleGearboxMode,
   } = useDrivingSession({
     car,
@@ -80,6 +82,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
     transmission,
     aspiration,
     tyre,
+    suspension,
     sceneRef,
     audio,
     onToggleMute,
@@ -113,10 +116,10 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
 
     let scene = null
     try {
-      scene = new CityScene(canvas, car)
+      scene = new RoadScene(canvas, car)
       sceneRef.current = scene
     } catch (error) {
-      console.error('Unable to start the 3D city scene', error)
+      console.error('Unable to start the 3D road scene', error)
       requestAnimationFrame(() => setSceneError(true))
     }
 
@@ -205,8 +208,8 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
             type="button"
             className="icon-button"
             onClick={() => setOverview((value) => !value)}
-            aria-label={overview ? 'Return to drive camera' : 'Show full city map'}
-            title={overview ? 'Drive view' : 'Full city map'}
+            aria-label={overview ? 'Return to drive camera' : 'Show full road map'}
+            title={overview ? 'Drive view' : 'Full road map'}
             aria-pressed={overview}
           >
             <Map size={18} />
@@ -214,7 +217,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
         </div>
       </header>
 
-      <Minimap
+      <RoadMap
         telemetry={telemetry}
         ticket={dispatch.ticket}
         status={dispatch.status}
@@ -269,15 +272,15 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
       )}
 
       {overview && (
-        <div className="overview-map" role="dialog" aria-label="Full city map">
+        <div className="overview-map" role="dialog" aria-label="Full road map">
           <div className="overview-label">
-            <Map size={14} /> CITY MAP <span>· {district}</span>
+            <Map size={14} /> SAN ANDREAS ROADS <span>· {district}</span>
           </div>
           <button
             type="button"
             className="overview-close"
             onClick={() => setOverview(false)}
-            aria-label="Close city map"
+            aria-label="Close road map"
             title="Close map"
           >
             <X size={20} />
@@ -298,7 +301,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
               )
               : 'Click anywhere on the map to set a destination or teleport there'}
           </div>
-          <Minimap
+          <RoadMap
             variant="overview"
             telemetry={telemetry}
             ticket={dispatch.ticket}
@@ -346,7 +349,31 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
             {telemetry.gearboxMode === 'D' ? 'D · AUTO' : 'M · MANUAL'}
           </button>
         )}
+        <button type="button" className={`setting-toggle ${tuningOpen ? 'is-active' : ''}`}
+          onClick={() => setTuningOpen((value) => !value)} aria-expanded={tuningOpen}>
+          Absorbers
+        </button>
       </div>
+
+      {tuningOpen && (
+        <div className="live-suspension" aria-label="Live suspension tuning">
+          <strong>SUSPENSION TUNING</strong>
+          {[
+            ['spring', 'Spring stiffness'],
+            ['damper', 'Absorber damping'],
+          ].map(([key, label]) => (
+            <label key={key}>
+              <span>{label} · {Math.round((telemetry.suspension?.[key] ?? 0.5) * 100)}%</span>
+              <input type="range" min="0" max="100"
+                value={Math.round((telemetry.suspension?.[key] ?? 0.5) * 100)}
+                onChange={(event) => tuneSuspension({
+                  ...telemetry.suspension,
+                  [key]: Number(event.target.value) / 100,
+                })} />
+            </label>
+          ))}
+        </div>
+      )}
 
       <div className="range-selector" role="group" aria-label="Transmission range">
         <span className="range-caption">GEAR SELECTOR</span>

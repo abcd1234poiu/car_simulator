@@ -374,13 +374,27 @@ export const TYRES = {
 export const TYRE_ORDER = ['street', 'sport', 'slick']
 export const DEFAULT_TYRE = TYRES.street.id
 
+export const SUSPENSION_PRESETS = Object.freeze({
+  comfort: Object.freeze({ name: 'Comfort', spring: 0.3, damper: 0.38 }),
+  balanced: Object.freeze({ name: 'Balanced', spring: 0.58, damper: 0.62 }),
+  sport: Object.freeze({ name: 'Sport', spring: 0.86, damper: 0.82 }),
+  drift: Object.freeze({ name: 'Drift', spring: 0.72, damper: 0.5 }),
+})
+export const DEFAULT_SUSPENSION = SUSPENSION_PRESETS.balanced
+export function normalizeSuspension(suspension = DEFAULT_SUSPENSION) {
+  return {
+    spring: clamp01(Number(suspension?.spring ?? DEFAULT_SUSPENSION.spring)),
+    damper: clamp01(Number(suspension?.damper ?? DEFAULT_SUSPENSION.damper)),
+  }
+}
+
 export const CARS = [
   {
     id: 'metro-cab',
     name: 'Metro Cab',
     className: 'City Taxi',
     tagline: 'A comfortable four-door workhorse, ready for the next fare.',
-    bodyStyle: 'gt',
+    bodyStyle: 'sedan',
     taxi: true,
     color: '#f5c94a',
     accent: '#fff0a6',
@@ -447,7 +461,7 @@ export const CARS = [
     mass: 1590,
     drivetrain: 'AWD',
     grip: 0.99,
-    dragCd: 0.31,
+    dragCd: 0.27,
     frontalArea: 2.05,
     wheelRadius: 0.34,
     seats: 4,

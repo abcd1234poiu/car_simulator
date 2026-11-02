@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import { SPAWN } from '../maps/city.js'
+import { SPAWN } from '../maps/roadWorld.js'
 import { dispatchReducer, initialDispatchState } from '../taxi/dispatch.js'
 
 export function useTaxiDispatch(telemetry, resetCount) {

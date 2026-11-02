@@ -156,7 +156,8 @@ export class InputController {
     this.throttle = approach(this.throttle, wantThrottle, dt, wantThrottle ? 12 : 10)
     this.brake = approach(this.brake, wantBrake, dt, wantBrake ? 15 : 14)
     this.clutch = approach(this.clutch, wantClutch, dt, wantClutch ? 30 : 15)
-    this.steer = approach(this.steer, wantSteer, dt, 12)
+    this.steer = approach(this.steer, wantSteer, dt,
+      Math.abs(wantSteer) < Math.abs(this.steer) ? 20 : 15)
 
     return {
       throttle: this.throttle,

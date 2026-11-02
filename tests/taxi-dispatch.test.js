@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SPAWN, distanceBetween, townAt } from '../src/maps/city.js'
+import { SPAWN, distanceBetween, districtAt } from '../src/maps/roadWorld.js'
 import {
   STOP_RADIUS,
   createTicket,
@@ -129,8 +129,8 @@ test('fares can start and finish across different cities', () => {
   const towns = new Set()
   for (let serial = 1; serial <= 16; serial += 1) {
     const ticket = createTicket(position, serial)
-    towns.add(townAt(ticket.pickup.x, ticket.pickup.z)?.id ?? 'metro')
-    towns.add(townAt(ticket.dropoff.x, ticket.dropoff.z)?.id ?? 'metro')
+    towns.add(districtAt(ticket.pickup.x, ticket.pickup.z)?.id ?? 'metro')
+    towns.add(districtAt(ticket.dropoff.x, ticket.dropoff.z)?.id ?? 'metro')
   }
   assert.ok(towns.size >= 4, `expected fares across several towns, got ${[...towns].join(', ')}`)
 })

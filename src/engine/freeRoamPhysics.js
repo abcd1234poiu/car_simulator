@@ -4,8 +4,8 @@
  * The taxi sim drives along a generated route; this subclass keeps the same
  * engine, gearbox, clutch, range and traction logic but replaces the
  * route-relative lateral model with a world-space kinematic bicycle. The car
- * can now steer anywhere in the city, slide when grip runs out and collide
- * with buildings, parked cars and the city boundary.
+ * can now steer anywhere on the replacement road network, slide when grip
+ * runs out and collide with the playable world's boundary.
  */
 
 import { VehiclePhysics, clamp } from './physics.js'
@@ -17,10 +17,9 @@ import {
   resolveCollision,
   surfaceHeightAt,
   surfaceSlopeAlong,
-} from '../maps/city.js'
+} from '../maps/roadWorld.js'
 
 const G = 9.81
-const MAX_SPEED = 110
 const WHEELBASE = 2.62
 const COLLISION_RADIUS = 1.35
 
@@ -45,6 +44,12 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
     this.slipAngle = 0
     this.impact = 0
     this.wheelspin = false
+    this.filteredSteer = 0
+    this.suspensionTravel = 0
+    this.chassisY = this.y
+    this.verticalVelocity = 0
+    this.bodyPitch = 0
+    this.bodyRoll = 0
   }
 
   teleport(x, z, heading = this.heading) {
@@ -61,11 +66,18 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
     this.shiftEvent = null
     this.pendingShiftEvent = null
     this.y = surfaceHeightAt(x, z)
+    this.chassisY = this.y
+    this.verticalVelocity = 0
+    this.suspensionTravel = 0
+    this.bodyPitch = 0
+    this.bodyRoll = 0
+    this.filteredSteer = 0
     this.offRoad = !isOnRoad(x, z)
     return this.snapshot()
   }
 
   integrateMotion(step, driveForce, stoppingAcceleration, handbrake = false) {
+    const previousSpeed = this.speed
     const throttleLift = this.gear === 0 && this.throttle < 0.08 ? 0.7 : 0
 
     if (this.gear === 0) {
@@ -86,19 +98,27 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
         this.speed = Math.max(0, this.speed + acceleration * step)
       }
     }
-    this.speed = clamp(this.speed, -12, MAX_SPEED)
+    // Drag, gearing and engine power determine top speed; there is no
+    // arbitrary forward speed ceiling.
 
     const speedAbs = Math.abs(this.speed)
-    const speedRatio = clamp(speedAbs / 60, 0, 1)
-    // Up to ~60° of road-wheel lock at parking speeds, tightening with speed.
-    const maxSteer = 1.05 - 0.5 * speedRatio
+    // Keyboard steering should not command near-parking-lot wheel lock on a
+    // highway. A progressive rack leaves low-speed turns available but makes
+    // small corrections predictable at 80-120 km/h.
+    const maxSteer = 0.68 / (1 + (speedAbs / 13) ** 1.25)
+    this.filteredSteer = approach(this.filteredSteer, this.steer, step,
+      Math.abs(this.steer) < Math.abs(this.filteredSteer) ? 18 : 12)
     // The shared input controller reports left as positive; the bicycle model
     // below uses right as positive, so invert here.
-    const steerAngle = -this.steer * maxSteer
+    const steerAngle = -this.filteredSteer * maxSteer
     const kinematicYaw = speedAbs > 0.15 ? (this.speed / WHEELBASE) * Math.tan(steerAngle) : 0
 
+    const powerOversteer = this.car.drivetrain === 'RWD' && !this.tractionControl &&
+      this.throttle > 0.55 && speedAbs > 8
+      ? clamp((this.throttle - 0.55) * speedAbs / 22, 0, 0.35) : 0
     const lateralGrip = (this.effectiveGrip ?? this.car.grip) * G * (this.offRoad ? 0.7 : 1) *
-      (handbrake ? 0.45 : 1) * (this.tractionControl ? 1 : 0.85)
+      (handbrake ? 0.38 : 1) * (this.tractionControl ? 1 : 0.88) *
+      (0.9 + this.suspension.spring * 0.16) * (1 - powerOversteer)
     let yawTarget
     if (speedAbs < 2.2) {
       yawTarget = clamp(kinematicYaw, -2.1, 2.1)
@@ -107,24 +127,32 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
       yawTarget = clamp(kinematicYaw, -yawLimit, yawLimit)
       // Handbrake yaw assist must follow the same handedness as the steering
       // input (left is positive steer, which produces a negative yaw).
-      if (handbrake) yawTarget -= this.steer * Math.sign(this.speed) * 1.5 * clamp(speedAbs / 16, 0, 1)
+      if (handbrake) yawTarget -= this.filteredSteer * Math.sign(this.speed) * 0.95 *
+        clamp(speedAbs / 12, 0, 1)
 
       // Keyboard steer assist: when the driver is not actively steering, ease
       // the heading back toward the road direction under the car. This makes
       // arrow-key driving much less twitchy without taking control away.
-      if (!handbrake && !this.offRoad && Math.abs(this.steer) < 0.14) {
+      if (!handbrake && !this.offRoad && Math.abs(this.steer) < 0.08 &&
+        Math.abs(this.slipAngle) < 0.09 && Math.abs(this.yawRate) < 0.35) {
         const roadHeading = nearestRoadHeading(this.x, this.z, this.heading)
         if (roadHeading !== null) {
           const error = normalizeAngle(roadHeading - this.heading)
-          yawTarget += clamp(error * 2.1, -0.65, 0.65) *
-            clamp(speedAbs / 14, 0, 1)
+          // Never auto-turn across an intersection or fight an intentional
+          // lane change; only trim small heading errors on a straight road.
+          if (Math.abs(error) < 0.28) {
+            yawTarget += clamp(error * 0.65, -0.15, 0.15) *
+              clamp(speedAbs / 16, 0, 1)
+          }
         }
       }
 
-      yawTarget = clamp(yawTarget, -yawLimit * 1.8, yawLimit * 1.8)
+      const allowedYaw = handbrake ? yawLimit + 0.75 : yawLimit * 1.35
+      yawTarget = clamp(yawTarget, -allowedYaw, allowedYaw)
     }
 
-    this.yawRate = approach(this.yawRate, yawTarget, step, handbrake ? 4 : 8)
+    this.yawRate = approach(this.yawRate, yawTarget, step,
+      handbrake ? 5.5 : 4.5 + this.suspension.damper * 5)
     this.heading += this.yawRate * step
 
     const requiredLateral = this.yawRate * this.speed
@@ -136,7 +164,8 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
         Math.min(excess / Math.max(lateralGrip, 1), 2.2) *
         Math.min(speedAbs * 0.34, 8)
     }
-    this.lateralVelocity = approach(this.lateralVelocity, slipTarget, step, handbrake ? 3.4 : 5)
+    this.lateralVelocity = approach(this.lateralVelocity, slipTarget, step,
+      handbrake ? 3.2 : 2.5 + this.suspension.damper * 4)
     this.slipAngle = Math.atan2(this.lateralVelocity, Math.max(speedAbs, 1.2))
 
     const sin = Math.sin(this.heading)
@@ -174,6 +203,24 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
     this.z = clamp(nextZ, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ)
     this.y = surfaceHeightAt(this.x, this.z)
     this.slope = surfaceSlopeAlong(this.x, this.z, this.heading)
+    // A spring/damper absorber follows the road while filtering bumps. Spring
+    // stiffness changes travel; damping changes how quickly it settles.
+    const roughness = Math.sin(this.odometer * (this.offRoad ? 2.4 : 0.8)) *
+      (this.offRoad ? 0.055 : 0.008)
+    const targetY = this.y + roughness
+    const springForce = (targetY - this.chassisY) * (17 + this.suspension.spring * 28)
+    const dampingForce = this.verticalVelocity * (4 + this.suspension.damper * 10)
+    this.verticalVelocity += (springForce - dampingForce) * step
+    this.chassisY = clamp(this.chassisY + this.verticalVelocity * step,
+      this.y - 0.08, this.y + 0.3)
+    this.suspensionTravel = this.chassisY - this.y
+    const acceleration = (this.speed - previousSpeed) / Math.max(step, 0.001)
+    this.bodyPitch = approach(this.bodyPitch,
+      clamp(acceleration * 0.009 / (0.7 + this.suspension.spring), -0.075, 0.075),
+      step, 3 + this.suspension.damper * 5)
+    this.bodyRoll = approach(this.bodyRoll,
+      clamp(-this.yawRate * speedAbs * 0.008 / (0.7 + this.suspension.spring), -0.11, 0.11),
+      step, 3 + this.suspension.damper * 5)
     this.distance += travelled
     this.odometer += Math.abs(this.speed) * step
     this.elapsed += step
@@ -195,6 +242,10 @@ export class FreeRoamVehiclePhysics extends VehiclePhysics {
       slipAngle: this.slipAngle,
       impact: this.impact,
       wheelspin: this.wheelspin,
+      suspensionTravel: this.suspensionTravel,
+      bodyPitch: this.bodyPitch,
+      bodyRoll: this.bodyRoll,
+      suspension: this.suspension,
       distance: this.distance,
       distanceKm: this.odometer / 1000,
     }

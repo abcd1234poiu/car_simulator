@@ -4,13 +4,14 @@
  */
 
 import { roadCenter, roadWidth } from '../maps/road.js'
-import { surfaceSlopeAlong } from '../maps/city.js'
+import { surfaceSlopeAlong } from '../maps/roadWorld.js'
 import {
   DEFAULT_TYRE,
   TYRES,
   aspirationFactorAtRpm,
   defaultAspirationForEngine,
   getAspiration,
+  normalizeSuspension,
 } from '../constants/config.js'
 
 const ASPIRATION_INDUCTION = {
@@ -61,13 +62,14 @@ export function torqueAtRpm(engine, rpm) {
 }
 
 export class VehiclePhysics {
-  constructor({ car, engine, transmission, aspiration, tyre }) {
+  constructor({ car, engine, transmission, aspiration, tyre, suspension }) {
     this.car = car
     this.engine = engine
     this.transmission = transmission
     this.tyreConfig = typeof tyre === 'string'
       ? TYRES[tyre] ?? TYRES[DEFAULT_TYRE]
       : tyre ?? TYRES[DEFAULT_TYRE]
+    this.suspension = normalizeSuspension(suspension)
     this.baseGrip = car.grip * (this.tyreConfig.grip ?? 1)
     this.baseAspiration = defaultAspirationForEngine(engine)
     this.aspiration = typeof aspiration === 'string'
@@ -79,6 +81,11 @@ export class VehiclePhysics {
     this.maxTractionForce = this.baseGrip * car.mass * G
     this.shiftUpRpm = engine.redline * transmission.shiftUpFraction
     this.reset()
+  }
+
+  setSuspension(suspension) {
+    this.suspension = normalizeSuspension(suspension)
+    return this.suspension
   }
 
   reset() {
@@ -329,11 +336,16 @@ export class VehiclePhysics {
     this.handbrake = handbrake
 
     const mode = DRIVE_MODES[this.driveMode]
+    const fullPedal = clamp((throttleTarget - 0.75) / 0.2, 0, 1)
+    // Eco softens ordinary pedal travel, but the final detent requests full
+    // engine output (kickdown), as in a real drive-mode selector.
+    const torqueScale = lerp(mode.throttle, Math.max(mode.throttle, 1), fullPedal)
     const response = this.driveMode === 'sport' ? 11 : this.driveMode === 'eco' ? 4 : 7
     this.throttle = approach(this.throttle, throttleTarget, step, throttleTarget > this.throttle ? response : 11)
     this.brake = approach(this.brake, brakeTarget, step, brakeTarget > this.brake ? 12 : 16)
     this.clutch = approach(this.clutch, clutchTarget, step, 20)
-    this.steer = approach(this.steer, steerTarget, step, 9)
+    this.steer = approach(this.steer, steerTarget, step,
+      Math.abs(steerTarget) < Math.abs(this.steer) ? 17 : 12)
     this.shiftCooldown = Math.max(0, this.shiftCooldown - step)
     this.shiftTimer = Math.max(0, this.shiftTimer - step)
     this.shiftEvent = this.pendingShiftEvent
@@ -352,11 +364,17 @@ export class VehiclePhysics {
       : induction === 'supercharger' ? this.throttle : 0
     this.boost = approach(this.boost, boostTarget, step,
       induction === 'twin-turbo' ? 5.5 : induction === 'turbo' ? 2.7 : 18)
+    const boostFactor = induction === 'turbo' ? 0.65 + 0.35 * this.boost
+      : induction === 'twin-turbo' ? 0.72 + 0.28 * this.boost : 1
 
     // --- Engine speed ------------------------------------------------------
     if (this.transmission.type === 'cvt' && this.gearboxMode === 'D' && this.gear > 0) {
       const ratios = this.transmission.gearRatios
-      const targetRpm = lerp(this.engine.idleRpm + 800, this.engine.redline * mode.cvtRpm, this.throttle)
+      // Eco changes part-pedal response, not the driver's wide-open-throttle
+      // request. Otherwise Sport -> Eco can make a CVT dump thousands of RPM
+      // while the accelerator is still on the floor.
+      const cvtFraction = lerp(mode.cvtRpm, Math.max(mode.cvtRpm, 0.87), fullPedal)
+      const targetRpm = lerp(this.engine.idleRpm + 800, this.engine.redline * cvtFraction, this.throttle)
       const idealRatio = targetRpm * this.car.wheelRadius * (2 * Math.PI / 60) /
         (Math.max(Math.abs(this.speed), 2) * this.transmission.finalDrive)
       this.cvtRatio = approach(this.cvtRatio, clamp(idealRatio, ratios[ratios.length - 1], ratios[0]),
@@ -409,7 +427,10 @@ export class VehiclePhysics {
       // Shift points depend on pedal demand: gentle cruising short-shifts, while
       // wide-open throttle holds a gear near its performance shift point.
       const demand = Math.max(this.throttle, throttleTarget) ** 2.1
-      const highShiftRpm = Math.min(this.engine.redline * 0.98, this.shiftUpRpm * mode.shift)
+      // At full pedal, all drive modes hold the same performance shift point.
+      // The early Eco upshift remains for gentle driving only.
+      const shiftFactor = lerp(mode.shift, Math.max(mode.shift, DRIVE_MODES.sport.shift), fullPedal)
+      const highShiftRpm = Math.min(this.engine.redline * 0.98, this.shiftUpRpm * shiftFactor)
       const upRpm = lerp(this.engine.redline *
         (mode.upLow + (this.transmission.shiftLowBias ?? 0)), highShiftRpm, demand)
       const downRpm = this.engine.redline * lerp(mode.downLow, mode.downHigh, demand)
@@ -417,11 +438,17 @@ export class VehiclePhysics {
         ? this.rpmForSpeed(this.speed, this.gear + 1) : 0
       const nextRatio = this.transmission.gearRatios[this.gear] * this.transmission.finalDrive
       const nextDriveForce = this.gear < this.gearCount
-        ? torqueAtRpm(this.engine, nextRpm) * this.throttle * mode.throttle *
+        ? torqueAtRpm(this.engine, nextRpm) * clamp(this.throttle * torqueScale, 0, 1) *
+          boostFactor *
+          aspirationFactorAtRpm(this.aspiration, nextRpm, this.engine.redline) /
+          aspirationFactorAtRpm(this.baseAspiration, nextRpm, this.engine.redline) *
           nextRatio * DRIVETRAIN_EFFICIENCY / this.car.wheelRadius : 0
       const roadLoad = this.dragFactor * this.speed * this.speed + this.rollingResistance
       const nextGearViable = nextRpm >= Math.max(this.engine.idleRpm * 1.35, downRpm * 1.1) &&
         nextDriveForce >= roadLoad * 0.97
+      const overdriveReady = this.gear === this.gearCount - 1 &&
+        throttleTarget > 0.85 && this.rpm >= this.engine.redline * 0.9 &&
+        nextDriveForce > roadLoad * 1.02
       const wantsKickdown = throttleTarget >=
         (this.transmission.kickdownThreshold ?? 0.85) && this.kickdownArmed
       const hasRealThrottle = throttleTarget > 0.08 || this.throttle > 0.08
@@ -441,7 +468,8 @@ export class VehiclePhysics {
         }
       }
       if (!this.shiftEvent && this.gear < this.gearCount &&
-        hasRealThrottle && nextGearViable && (this.rpm > upshiftRpm || atRevLimit)) {
+        hasRealThrottle && nextGearViable &&
+        (this.rpm > upshiftRpm || atRevLimit || overdriveReady)) {
         this.beginShift(this.gear + 1, 'up')
       } else if (!this.shiftEvent &&
         (this.rpm < downRpm * 0.94 ||
@@ -477,10 +505,8 @@ export class VehiclePhysics {
       : this.gear === 0 ? 0
         : this.transmission.type === 'cvt' && this.gearboxMode === 'D'
           ? activeRatio : this.transmission.gearRatios[this.gear - 1] * this.transmission.finalDrive
-    const boostFactor = induction === 'turbo' ? 0.65 + 0.35 * this.boost
-      : induction === 'twin-turbo' ? 0.72 + 0.28 * this.boost : 1
     let engineTorque = torqueAtRpm(this.engine, this.rpm) *
-      clamp(this.throttle * mode.throttle, 0, 1) * boostFactor
+      clamp(this.throttle * torqueScale, 0, 1) * boostFactor
     // Apply the selected aspiration relative to the engine's factory tune. At
     // the factory setting this ratio is exactly 1, so existing engines keep
     // their original performance; alternative tunes add or remove boost/cam.

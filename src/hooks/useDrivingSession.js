@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FreeRoamVehiclePhysics } from '../engine/freeRoamPhysics.js'
 import { InputController } from '../engine/input.js'
 
-const UI_REFRESH = 0.05
+const UI_REFRESH = 0.1
 
 export function useDrivingSession({
-  car, engine, transmission, aspiration, tyre, sceneRef, audio, onToggleMute,
+  car, engine, transmission, aspiration, tyre, suspension, sceneRef, audio, onToggleMute,
 }) {
   const physics = useMemo(
-    () => new FreeRoamVehiclePhysics({ car, engine, transmission, aspiration, tyre }),
-    [car, engine, transmission, aspiration, tyre],
+    () => new FreeRoamVehiclePhysics({ car, engine, transmission, aspiration, tyre, suspension }),
+    [car, engine, transmission, aspiration, tyre, suspension],
   )
   const input = useMemo(() => new InputController(), [])
 
@@ -67,6 +67,11 @@ export function useDrivingSession({
     notify(physics.tractionControl ? 'Traction control on' : 'TSC OFF — wheelspin possible',
       physics.tractionControl ? 'info' : 'warn')
   }, [physics, notify])
+
+  const tuneSuspension = useCallback((suspension) => {
+    physics.setSuspension(suspension)
+    setTelemetry(physics.snapshot())
+  }, [physics])
 
   const toggleGearboxMode = useCallback(() => {
     if (physics.setGearboxMode(physics.gearboxMode === 'D' ? 'M' : 'D')) {
@@ -150,14 +155,16 @@ export function useDrivingSession({
     return () => input.detach()
   }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl, toggleIgnition])
 
-  // Pause automatically when the tab loses focus.
+  // A browser visibility change should release controls and mute audio, not
+  // open the in-game pause menu over the steering wheel.
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.hidden) setPaused(true)
+      if (document.hidden) input.clear()
+      audio?.setPaused(document.hidden || pausedRef.current)
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
+  }, [audio, input])
 
   useEffect(() => {
     physics.setIgnition(false)
@@ -176,7 +183,7 @@ export function useDrivingSession({
       frame = requestAnimationFrame(tick)
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
-      if (pausedRef.current) return
+      if (pausedRef.current || document.hidden) return
 
       const snapshot = physics.update(dt, input.update(dt))
       if (snapshot.shiftEvent) setShiftPulse((value) => value + 1)
@@ -218,6 +225,7 @@ export function useDrivingSession({
     requestRange,
     setDriveMode,
     toggleTractionControl,
+    tuneSuspension,
     toggleGearboxMode,
   }
 }

@@ -36,6 +36,8 @@ export function Dashboard({
   const engineBraking = !ignitionOff && (telemetry.engineBraking ?? 0) > 0.05
   const shiftShock = !ignitionOff && (telemetry.mechanicalShock ?? 0) > 0.08
   const handbrakeOn = !ignitionOff && telemetry.handbrake
+  const drifting = !ignitionOff && (telemetry.speedKmh ?? 0) > 25 &&
+    Math.abs(telemetry.slipAngle ?? 0) > 0.14
 
   return (
     <section className="dashboard" aria-label="Driving dashboard">
@@ -49,6 +51,7 @@ export function Dashboard({
           {aspiration && <span className="chip chip-aspiration">{aspiration.badge}</span>}
           <span className="chip">{car.drivetrain}</span>
           {tyre && <span className="chip chip-tyre">{tyre.shortName} · {Math.round((1 - (telemetry.tyreWear ?? 0)) * 100)}%</span>}
+          {telemetry.suspension && <span className="chip">SPR {Math.round(telemetry.suspension.spring * 100)} · DMP {Math.round(telemetry.suspension.damper * 100)}</span>}
         </div>
         <div className="dash-mode">
           {transmission.shortName} · {telemetry.driveMode?.toUpperCase()} · {inNeutral ? 'NEUTRAL' : inReverse ? 'REVERSE' : automatic ? 'DRIVE' : 'MANUAL'}
@@ -59,9 +62,8 @@ export function Dashboard({
       <div className="dash-gauges">
         <Gauge
           value={telemetry.speedKmh ?? 0}
-          max={360}
-          redline={320}
-          majorStep={60}
+          max={Math.max(400, Math.ceil(((telemetry.speedKmh ?? 0) + 1) / 100) * 100)}
+          majorStep={100}
           label="SPEED"
           unit="km/h"
           displayValue={String(Math.round(telemetry.speedKmh ?? 0))}
@@ -148,6 +150,7 @@ export function Dashboard({
           <span className={`stat-value status-value ${
             ignitionOff ? 'is-ignition-off'
               : shiftShock ? 'is-shock'
+                : drifting ? 'is-handbrake'
                 : handbrakeOn ? 'is-handbrake'
                   : engineBraking ? 'is-engine-brake'
                     : telemetry.tractionLimited ? 'is-active' : ''
@@ -156,6 +159,8 @@ export function Dashboard({
               ? 'IGNITION OFF'
               : shiftShock
                 ? 'SHIFT SHOCK'
+                : drifting
+                  ? `DRIFT ${Math.round(Math.abs(telemetry.slipAngle) * 180 / Math.PI)}°`
                 : handbrakeOn
                   ? 'HANDBRAKE'
                   : engineBraking

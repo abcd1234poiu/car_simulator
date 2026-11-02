@@ -39,7 +39,8 @@ export function Gauge({
   const gradientId = useId().replace(/[^a-zA-Z0-9]/g, '')
   const [sweep, setSweep] = useState(0)
   const fraction = clamp(value / max, 0, 1)
-  const redlineFraction = clamp(redline / max, 0, 1)
+  const hasRedline = Number.isFinite(redline)
+  const redlineFraction = hasRedline ? clamp(redline / max, 0, 1) : 2
   const displayedFraction = fraction + (1 - fraction) * sweep
   const needleAngle = START_ANGLE + displayedFraction * SWEEP
   const endColor = colorEnd ?? color
@@ -68,7 +69,7 @@ export function Gauge({
     majors.push({
       value: majorValue,
       angle: START_ANGLE + majorFraction * SWEEP,
-      inRedline: majorValue >= redline,
+      inRedline: hasRedline && majorValue >= redline,
     })
   }
 
@@ -99,13 +100,13 @@ export function Gauge({
           strokeLinecap="round"
         />
 
-        <path
+        {hasRedline && <path
           d={arcPath(START_ANGLE + redlineFraction * SWEEP, START_ANGLE + SWEEP)}
           fill="none"
           stroke="rgba(255,77,94,0.55)"
           strokeWidth="10"
           strokeLinecap="round"
-        />
+        />}
 
         <path
           d={arcPath(START_ANGLE, Math.max(START_ANGLE + 0.5, needleAngle))}

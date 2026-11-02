@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CARS, ENGINES, TRANSMISSIONS, TYRES } from '../src/constants/config.js'
+import { ASPIRATIONS, CARS, ENGINES, TRANSMISSIONS, TYRES } from '../src/constants/config.js'
 import { VehiclePhysics } from '../src/engine/physics.js'
 import { performanceSummary } from '../src/engine/specs.js'
 import { InputController } from '../src/engine/input.js'
@@ -49,9 +49,37 @@ test('CVT varies its ratio in D and allows virtual manual gears', () => {
   assert.ok(car.cvtRatio < firstRatio)
   assert.equal(car.setGearboxMode('M'), true)
   const gear = car.gear
-  const result = gear > 1 ? car.shiftDown() : car.shiftUp()
+  const result = gear < car.gearCount ? car.shiftUp() : car.shiftDown()
   assert.equal(result.ok, true)
   assert.notEqual(car.gear, gear)
+})
+
+test('full pedal keeps RPM demand when changing from Sport to Eco', () => {
+  for (const transmission of ['automatic', 'dsg', 'cvt']) {
+    const car = create('eco-i4', transmission, CARS[3])
+    car.setDriveMode('sport')
+    for (let i = 0; i < 170; i += 1) car.update(0.05, { throttle: 1 })
+    const before = car.rpm
+    const beforeGear = car.gear
+    car.setDriveMode('eco')
+    for (let i = 0; i < 10; i += 1) car.update(0.05, { throttle: 1 })
+    assert.ok(car.rpm > before * 0.85,
+      `${transmission}: RPM fell from ${before.toFixed(0)} to ${car.rpm.toFixed(0)}`)
+    if (transmission !== 'cvt') assert.ok(car.gear >= beforeGear)
+  }
+})
+
+test('Sport to Eco does not trigger an early upshift with a held full pedal', () => {
+  const car = create('inline-4', 'automatic')
+  car.gear = 3
+  car.speed = 6200 / car.rpmForSpeed(1, 3)
+  car.rpm = 6200
+  car.throttle = 1
+  car.setDriveMode('sport')
+  car.setDriveMode('eco')
+  car.update(0.05, { throttle: 1 })
+  assert.equal(car.gear, 3)
+  assert.ok(car.rpm > 6100)
 })
 
 test('full-throttle sport shifting does not stick on the rev limiter', () => {
@@ -86,6 +114,22 @@ test('full-throttle sport shifting does not stick on the rev limiter', () => {
           `${model.id}/${engineId}/${gearboxId} spent ${worstLimiterRun}s on the limiter`)
       }
     }
+  }
+})
+
+test('Meridian GT V6 supercharger DSG reaches seventh and passes 320 km/h', () => {
+  const meridian = CARS.find((car) => car.id === 'meridian-gt')
+  for (const mode of ['eco', 'normal', 'sport']) {
+    const vehicle = new VehiclePhysics({
+      car: meridian,
+      engine: ENGINES.v6,
+      transmission: TRANSMISSIONS.dsg,
+      aspiration: ASPIRATIONS.supercharger,
+    })
+    vehicle.setDriveMode(mode)
+    for (let i = 0; i < 2000; i += 1) vehicle.update(0.05, { throttle: 1 })
+    assert.equal(vehicle.gear, 7, `${mode} stayed in gear ${vehicle.gear}`)
+    assert.ok(vehicle.snapshot().speedKmh > 320, `${mode} did not exceed 320 km/h`)
   }
 })
 

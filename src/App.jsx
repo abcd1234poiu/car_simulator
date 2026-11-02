@@ -18,9 +18,9 @@ function App() {
   }, [audio])
 
   const startDrive = useCallback(
-    (car, engine, transmission, aspiration, tyre) => {
+    (car, engine, transmission, aspiration, tyre, suspension) => {
       audio.setMuted(muted)
-      setSession({ car, engine, transmission, aspiration, tyre })
+      setSession({ car, engine, transmission, aspiration, tyre, suspension })
     },
     [audio, muted],
   )

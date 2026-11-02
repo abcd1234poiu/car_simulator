@@ -8,10 +8,9 @@
 import {
   CITY_STOPS,
   SPAWN,
-  TOWNS,
+  districtAt,
   distanceBetween,
-  townAt,
-} from '../maps/city.js'
+} from '../maps/roadWorld.js'
 
 const PASSENGERS = ['Aisha', 'Daniel', 'Mei Ling', 'Ravi', 'Sofia', 'Hafiz', 'Nadia', 'Alex']
 const BASE_FARE = 4.5
@@ -21,10 +20,10 @@ export const STOP_RADIUS = 20
 const fareFor = (pickup, dropoff) =>
   Math.round((BASE_FARE + distanceBetween(pickup, dropoff) * FARE_PER_METRE) * 10) / 10
 
-const CITY_IDS = ['metro', ...TOWNS.map((town) => town.id)]
+const CITY_IDS = [...new Set(CITY_STOPS.map((stop) => districtAt(stop.x, stop.z)?.id))]
 const STOP_CITY = new Map(CITY_STOPS.map((stop) => [
   stop,
-  townAt(stop.x, stop.z)?.id ?? 'metro',
+  districtAt(stop.x, stop.z)?.id,
 ]))
 const STOPS_BY_CITY = new Map(CITY_IDS.map((id) => [
   id,
@@ -35,7 +34,7 @@ function pickStop(pool, offset) {
   return pool[((offset % pool.length) + pool.length) % pool.length]
 }
 
-const cityOf = (position) => townAt(position.x, position.z)?.id ?? 'metro'
+const cityOf = (position) => districtAt(position.x, position.z)?.id
 
 export function createTicket(currentPosition = SPAWN, serial = 1) {
   const position = { x: currentPosition.x ?? SPAWN.x, z: currentPosition.z ?? SPAWN.z }

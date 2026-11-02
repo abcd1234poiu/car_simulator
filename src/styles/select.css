@@ -106,6 +106,46 @@
   color: var(--muted-2);
 }
 
+.suspension-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 12px 0 15px;
+}
+
+.suspension-presets button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.suspension-presets button.is-active {
+  border-color: var(--accent);
+  background: rgba(92, 243, 213, 0.13);
+  color: var(--accent);
+}
+
+.suspension-slider {
+  display: block;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.suspension-slider span {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.suspension-slider strong { color: var(--accent); }
+.suspension-slider input { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
 .select-main {
   position: relative;
   z-index: 2;
@@ -354,6 +394,30 @@
   height: auto;
   margin: 6px 0 0;
   filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.5));
+}
+
+.car-preview-3d {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  margin: 8px 0 6px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #101822;
+}
+
+.car-preview-3d .car-silhouette {
+  position: absolute;
+  inset: 36px 0 auto;
+}
+
+.car-preview-3d canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 180ms ease;
 }
 
 .summary-name {
@@ -751,7 +815,7 @@
   }
 
   .config-summary {
-    display: none;
+    display: block;
   }
 }
 

@@ -1,5 +1,5 @@
 import { Check, MapPin, Phone, X } from 'lucide-react'
-import { Minimap } from '../maps/Minimap.jsx'
+import { RoadMap } from '../maps/RoadMap.jsx'
 import { formatDistance, remainingDistance } from '../taxi/dispatch.js'
 
 const phaseCopy = {
@@ -23,7 +23,7 @@ export function DispatchPhone({
       </div>
       <div className="phone-screen-body">
         <div className="phone-ticket-id"><span>RIDE {ticket.id}</span><span>{status === 'available' ? 'INCOMING' : status.toUpperCase()}</span></div>
-        <Minimap variant="phone" telemetry={telemetry} ticket={ticket} status={status} destination={destination} />
+        <RoadMap variant="phone" telemetry={telemetry} ticket={ticket} status={status} destination={destination} />
         <div className="phone-passenger"><span className="passenger-avatar">{ticket.passenger[0]}</span><div><small>PASSENGER</small><strong>{ticket.passenger}</strong></div><span className="fare-pill">RM {ticket.fare.toFixed(2)}</span></div>
         <div className="phone-route">
           <div><i className="route-dot pickup" /><span><small>PICKUP · {ticket.pickup.district}</small><strong>{ticket.pickup.name}</strong></span></div>

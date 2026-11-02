@@ -25,6 +25,20 @@ export function createSunTexture() {
  * the profile's X axis becomes world Z.
  */
 const CAR_SHAPES = {
+  sedan: {
+    length: 4.75,
+    width: 1.87,
+    body: [
+      [-2.36, 0.3], [-2.37, 0.55], [-2.22, 0.76], [-1.5, 0.86],
+      [-0.8, 0.9], [0.95, 0.91], [1.8, 0.87], [2.32, 0.77],
+      [2.37, 0.54], [2.28, 0.31], [1.1, 0.26], [-1.45, 0.26],
+    ],
+    glass: [[-1.25, 0.89], [-0.69, 1.25], [0.8, 1.25], [1.52, 0.88]],
+    glassWidth: 1.61,
+    roof: { z: 0.05, y: 1.25, length: 1.48, width: 1.68 },
+    spoiler: null,
+    scoop: false,
+  },
   coupe: {
     length: 4.42,
     width: 1.86,
@@ -171,6 +185,19 @@ function taperUpperBody(geometry, amount, startY, endY) {
   return geometry
 }
 
+/** Narrow nose and tail in plan view; a constant-width extrusion looks toy-like. */
+function sculptBodyPlan(geometry, length) {
+  const position = geometry.attributes.position
+  for (let index = 0; index < position.count; index += 1) {
+    const normalized = Math.min(1, Math.abs(position.getX(index)) / (length / 2))
+    const shoulder = 1 - 0.085 * normalized * normalized
+    position.setZ(index, position.getZ(index) * shoulder)
+  }
+  position.needsUpdate = true
+  geometry.computeVertexNormals()
+  return geometry
+}
+
 export function createCarModel(car) {
   const group = new THREE.Group()
   const wheels = []
@@ -187,8 +214,9 @@ export function createCarModel(car) {
     color: 0x071017,
     metalness: 0.55,
     roughness: 0.06,
-    transparent: true,
-    opacity: 0.9,
+    // Opaque dark glazing avoids sorting/z-fighting between the cabin shell,
+    // windshields and roof when seen from the chase camera.
+    transparent: false,
     envMapIntensity: 1.45,
   })
   const trimMaterial = new THREE.MeshStandardMaterial({
@@ -255,6 +283,7 @@ export function createCarModel(car) {
   // Main body with a slightly softer bevel and a subtle tumblehome for a more
   // rounded, production-car silhouette.
   const bodyGeometry = profileGeometry(shape.body, width, 0.075)
+  sculptBodyPlan(bodyGeometry, length)
   taperUpperBody(bodyGeometry, 0.065, 0.3, 0.95)
   const body = new THREE.Mesh(bodyGeometry, paintMaterial)
   body.rotation.y = -Math.PI / 2
@@ -317,12 +346,68 @@ export function createCarModel(car) {
   cabin.rotation.y = -Math.PI / 2
   group.add(cabin)
 
+  // Actual sloped front and rear glazing, rather than relying on the dark
+  // extruded cabin alone. The panels and A/C pillars make the roof read as a
+  // production-car greenhouse from the chase camera.
+  const addGlassPanel = (bottom, top) => {
+    const halfBottom = shape.glassWidth * 0.48
+    const halfTop = shape.roof.width * 0.46
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      -halfBottom, bottom[1] + 0.025, bottom[0],
+      halfBottom, bottom[1] + 0.025, bottom[0],
+      -halfTop, top[1] + 0.025, top[0],
+      halfBottom, bottom[1] + 0.025, bottom[0],
+      halfTop, top[1] + 0.025, top[0],
+      -halfTop, top[1] + 0.025, top[0],
+    ], 3))
+    geometry.computeVertexNormals()
+    group.add(new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
+      color: 0x10212d, metalness: 0.42, roughness: 0.08,
+      side: THREE.DoubleSide,
+      clearcoat: 1, clearcoatRoughness: 0.03,
+    })))
+  }
+  addGlassPanel(shape.glass[0], shape.glass[1])
+  addGlassPanel(shape.glass[3], shape.glass[2])
+
+  const addPillar = (start, end, side) => {
+    const a = new THREE.Vector3(side * shape.glassWidth * 0.48, start[1], start[0])
+    const b = new THREE.Vector3(side * shape.roof.width * 0.46, end[1], end[0])
+    const direction = new THREE.Vector3().subVectors(b, a)
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035,
+      direction.length(), 8), trimMaterial)
+    pillar.position.copy(a).add(b).multiplyScalar(0.5)
+    pillar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
+    group.add(pillar)
+  }
+  for (const side of [-1, 1]) {
+    addPillar(shape.glass[0], shape.glass[1], side)
+    addPillar(shape.glass[3], shape.glass[2], side)
+  }
+
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(shape.roof.width, 0.06, shape.roof.length),
     paintMaterial,
   )
   roof.position.set(0, shape.roof.y, shape.roof.z)
   group.add(roof)
+
+  // Hood creases and a center brake lamp add scale cues without licensed
+  // emblems or brand-specific bodywork.
+  for (const side of [-1, 1]) {
+    const crease = new THREE.Mesh(
+      new THREE.BoxGeometry(0.012, 0.012, Math.max(0.5, length * 0.19)),
+      darkChromeMaterial,
+    )
+    crease.position.set(side * width * 0.23, 0.905, -length / 2 + 0.72)
+    group.add(crease)
+  }
+  const highBrake = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.025, 0.025), brakeLightMaterial,
+  )
+  highBrake.position.set(0, shape.roof.y + 0.052, shape.roof.z + shape.roof.length / 2 + 0.02)
+  group.add(highBrake)
 
   // B-pillar splitting the side glass into front and rear windows.
   const bPillar = new THREE.Mesh(
@@ -362,10 +447,11 @@ export function createCarModel(car) {
   splitter.position.set(0, 0.3, frontZ - 0.03)
   group.add(splitter)
 
-  const grilleFrame = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.3, 0.1), chromeMaterial)
+  const grilleWidth = car.bodyStyle === 'muscle' ? 1.5 : car.bodyStyle === 'hatch' ? 1.02 : 1.24
+  const grilleFrame = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth, 0.3, 0.1), chromeMaterial)
   grilleFrame.position.set(0, 0.55, frontZ + 0.015)
   group.add(grilleFrame)
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.22, 0.11), trimMaterial)
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth - 0.1, 0.22, 0.11), trimMaterial)
   grille.position.set(0, 0.55, frontZ + 0.03)
   group.add(grille)
   for (let i = -3; i <= 3; i += 1) {
@@ -388,6 +474,9 @@ export function createCarModel(car) {
     fog.rotation.x = Math.PI / 2
     fog.position.set(side * 0.7, 0.43, frontZ + 0.01)
     group.add(fog)
+    const intake = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.11, 0.08), trimMaterial)
+    intake.position.set(side * (width / 2 - 0.19), 0.46, frontZ - 0.02)
+    group.add(intake)
   }
 
   // Rear bumper, tail-light bar and exhaust tips.
@@ -395,6 +484,9 @@ export function createCarModel(car) {
   const valance = new THREE.Mesh(new THREE.BoxGeometry(width * 0.94, 0.16, 0.22), trimMaterial)
   valance.position.set(0, 0.35, rearZ + 0.01)
   group.add(valance)
+  const diffuser = new THREE.Mesh(new THREE.BoxGeometry(width * 0.73, 0.045, 0.3), darkChromeMaterial)
+  diffuser.position.set(0, 0.24, rearZ + 0.03)
+  group.add(diffuser)
 
   const tailHousing = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.19, 0.08), trimMaterial)
   tailHousing.position.set(0, 0.76, rearZ + 0.015)
@@ -456,7 +548,13 @@ export function createCarModel(car) {
       emissiveIntensity: 0.62,
       roughness: 0.4,
     })
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.17, 0.24), signMaterial)
+    const signEdgeMaterial = new THREE.MeshStandardMaterial({
+      color: 0xfff5d3, emissive: 0xffe6a2, emissiveIntensity: 0.28, roughness: 0.45,
+    })
+    // Text belongs only on the front/back faces, not stretched over the top.
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.17, 0.24),
+      [signEdgeMaterial, signEdgeMaterial, signEdgeMaterial, signEdgeMaterial,
+        signMaterial, signMaterial])
     sign.position.set(0, shape.roof.y + 0.12, shape.roof.z)
     group.add(sign)
     const signBase = new THREE.Mesh(
@@ -514,6 +612,8 @@ export function createCarModel(car) {
   const spokeGeometry = new THREE.BoxGeometry(0.055, wheelRadius * 0.92, 0.065)
   const sidewallGeometry = new THREE.TorusGeometry(wheelRadius * 0.72, wheelRadius * 0.16, 8, 24)
   sidewallGeometry.rotateY(Math.PI / 2)
+  const tireGrooveGeometry = new THREE.TorusGeometry(wheelRadius * 0.95, 0.009, 5, 30)
+  tireGrooveGeometry.rotateY(Math.PI / 2)
 
   for (const side of [-1, 1]) {
     for (const axle of [-1, 1]) {
@@ -527,6 +627,11 @@ export function createCarModel(car) {
       const sidewall = new THREE.Mesh(sidewallGeometry, tireMaterial)
       sidewall.position.x = side * 0.135
       spin.add(sidewall)
+      for (const offset of [-0.08, 0, 0.08]) {
+        const groove = new THREE.Mesh(tireGrooveGeometry, trimMaterial)
+        groove.position.x = offset
+        spin.add(groove)
+      }
 
       const rim = new THREE.Mesh(rimGeometry, rimMaterial)
       spin.add(rim)
