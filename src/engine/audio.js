@@ -1,11 +1,29 @@
 /**
- * Synthesized engine audio built with the Web Audio API.
- * No samples or copyrighted recordings — the note is generated live from RPM.
+ * Hybrid Web Audio engine: combustion synthesis, bundled engine loops and
+ * speed-dependent intake, tyre and wind layers.
  */
 
 import { defaultAspirationForEngine } from '../constants/config.js'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+// Keep the recorded loop quiet at idle (where its fixed cadence is most
+// noticeable) and let it open up with engine load and RPM.
+export function engineSampleLevel(rpm, throttle, maxRpm, volume = 1, quiet = false) {
+  const rev = clamp((rpm - 900) / Math.max(1, maxRpm - 900), 0, 1)
+  const load = clamp(throttle, 0, 1)
+  return (0.07 + rev * 0.19 + load * 0.34) * volume * (quiet ? 0.75 : 1)
+}
+
+export function drivingNoiseLevels(speedKmh, offRoad = false) {
+  const speed = clamp(Math.abs(speedKmh), 0, 400)
+  const roll = clamp(speed / 90, 0, 1)
+  const wind = clamp((speed - 45) / 190, 0, 1)
+  return {
+    tyre: roll * (offRoad ? 0.075 : 0.024),
+    wind: wind * 0.033,
+  }
+}
 
 const SAMPLE_BY_PROFILE = {
   quiet: 2,
@@ -71,6 +89,7 @@ export class EngineAudio {
     this.lastRpm = 0
     this.popCooldown = 0
     this.lastState = null
+    this.shiftDuckingUntil = 0
     this.aspiration = null
     this.baseAspiration = null
     this.voiceSound = null
@@ -174,6 +193,36 @@ export class EngineAudio {
     noiseFilter.connect(noiseGain)
     noiseGain.connect(fallbackGain)
 
+    // These layers bypass the oscillator/worklet crossfade, so they remain
+    // audible when the higher-quality combustion worklet is available.
+    const intakeFilter = ctx.createBiquadFilter()
+    intakeFilter.type = 'bandpass'
+    intakeFilter.frequency.value = 1500
+    intakeFilter.Q.value = 0.65
+    const intakeGain = ctx.createGain()
+    intakeGain.gain.value = 0
+    noise.connect(intakeFilter)
+    intakeFilter.connect(intakeGain)
+    intakeGain.connect(master)
+
+    const tyreFilter = ctx.createBiquadFilter()
+    tyreFilter.type = 'lowpass'
+    tyreFilter.frequency.value = 560
+    const tyreGain = ctx.createGain()
+    tyreGain.gain.value = 0
+    noise.connect(tyreFilter)
+    tyreFilter.connect(tyreGain)
+    tyreGain.connect(master)
+
+    const windFilter = ctx.createBiquadFilter()
+    windFilter.type = 'highpass'
+    windFilter.frequency.value = 1100
+    const windGain = ctx.createGain()
+    windGain.gain.value = 0
+    noise.connect(windFilter)
+    windFilter.connect(windGain)
+    windGain.connect(master)
+
     osc1.start()
     osc2.start()
     sub.start()
@@ -197,6 +246,10 @@ export class EngineAudio {
       sub,
       noiseFilter,
       noiseGain,
+      intakeFilter,
+      intakeGain,
+      tyreGain,
+      windGain,
       osc2Gain,
       subGain,
       whine,
@@ -328,6 +381,8 @@ export class EngineAudio {
       try { this.sampleSource.stop() } catch { /* already stopped */ }
       this.sampleSource.disconnect()
     }
+    this.sampleFilter?.disconnect()
+    this.sampleGain?.disconnect()
     this.sampleSource = null
     this.sampleGain = null
     this.sampleFilter = null
@@ -559,6 +614,7 @@ export class EngineAudio {
     this.ignitionCatch = false
     this.ignitionRevAt = null
     this.popCooldown = 0
+    this.shiftDuckingUntil = 0
     this.applyMasterGain(0, 0.15)
   }
 
@@ -577,7 +633,8 @@ export class EngineAudio {
     }
   }
 
-  update({ rpm = 900, throttle = 0, boost = 0, limiter = false, shiftEvent = null }) {
+  update({ rpm = 900, throttle = 0, boost = 0, limiter = false,
+    shiftEvent = null, speedKmh = 0, offRoad = false }) {
     if (!this.started || !this.context || !this.engine || !this.nodes) return
 
     // Short engine blip when the engine catches after ignition.
@@ -596,7 +653,7 @@ export class EngineAudio {
       }
     }
 
-    this.lastState = { rpm, throttle, boost, limiter }
+    this.lastState = { rpm, throttle, boost, limiter, speedKmh, offRoad }
     const nodes = this.nodes
     const now = this.context.currentTime
     const sound = this.voiceSound ?? this.engine.sound
@@ -619,10 +676,12 @@ export class EngineAudio {
     }
     this.lastThrottle = throttle
     this.lastRpm = rpm
+    if (shiftEvent) this.shiftDuckingUntil = now + 0.11
+    const audibleThrottle = throttle * (now < this.shiftDuckingUntil ? 0.48 : 1)
 
     if (this.workletNode) {
       this.workletNode.parameters.get('rpm').setTargetAtTime(clamp(rpm, 300, 12000), now, 0.025)
-      this.workletNode.parameters.get('throttle').setTargetAtTime(clamp(throttle, 0, 1), now, 0.035)
+      this.workletNode.parameters.get('throttle').setTargetAtTime(clamp(audibleThrottle, 0, 1), now, 0.035)
       this.workletNode.parameters.get('boost').setTargetAtTime(clamp(boost, 0, 1), now, 0.055)
       this.workletNode.parameters.get('limiter').setTargetAtTime(limiter ? 1 : 0, now, 0.012)
       if (shiftEvent) this.workletNode.port.postMessage({ type: 'shift', direction: shiftEvent })
@@ -631,7 +690,7 @@ export class EngineAudio {
     const safeRpm = clamp(rpm, 400, 12000)
     const firing = (safeRpm / 60) * (this.engine.cylinders / 2)
     const base = clamp(firing, 18, 500)
-    const load = clamp(throttle, 0, 1)
+    const load = clamp(audibleThrottle, 0, 1)
     const revRatio = safeRpm / this.engine.maxRpm
 
     nodes.osc1.frequency.setTargetAtTime(base, now, 0.03)
@@ -648,16 +707,16 @@ export class EngineAudio {
     nodes.engineGain.gain.setTargetAtTime(engineLevel, now, 0.045)
 
     if (this.sampleSource && this.sampleGain && this.sampleFilter) {
-      const sampleLevel = (0.3 + load * 0.3 + revRatio * 0.16) *
-        (sound.volume ?? 1) * (sound.profile === 'quiet' ? 0.8 : 1)
+      const sampleLevel = engineSampleLevel(safeRpm, load, this.engine.maxRpm,
+        sound.volume ?? 1, sound.profile === 'quiet')
       this.sampleGain.gain.setTargetAtTime(sampleLevel, now, 0.08)
       this.sampleFilter.frequency.setTargetAtTime(
-        clamp(650 + load * 1900 + revRatio * 1700, 500, 5200),
+        clamp(550 + load * 1500 + revRatio * 1650, 500, 4800),
         now,
         0.08,
       )
       this.sampleSource.playbackRate.setTargetAtTime(
-        clamp(safeRpm / 2800, 0.68, 2.3),
+        clamp(safeRpm / 3000, 0.45, 2.05),
         now,
         0.08,
       )
@@ -669,6 +728,13 @@ export class EngineAudio {
 
     nodes.noiseFilter.frequency.setTargetAtTime(clamp(base * 4 + 240, 220, 3800), now, 0.06)
     nodes.noiseGain.gain.setTargetAtTime((0.01 + load * 0.05) * sound.noise, now, 0.06)
+    nodes.intakeFilter.frequency.setTargetAtTime(
+      clamp(800 + safeRpm * 0.38, 850, 4000), now, 0.07)
+    nodes.intakeGain.gain.setTargetAtTime(
+      (0.003 + load * 0.027) * sound.noise, now, 0.065)
+    const roadNoise = drivingNoiseLevels(speedKmh, offRoad)
+    nodes.tyreGain.gain.setTargetAtTime(roadNoise.tyre, now, 0.18)
+    nodes.windGain.gain.setTargetAtTime(roadNoise.wind, now, 0.22)
     const forced = ['turbo', 'twin-turbo', 'supercharged'].includes(sound.profile)
     const whineLevel = sound.profile === 'supercharged' ? 0.07 :
       sound.profile === 'twin-turbo' ? 0.045 : 0.028

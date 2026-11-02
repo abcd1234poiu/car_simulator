@@ -194,6 +194,8 @@ export function useDrivingSession({
         boost: snapshot.boost,
         limiter: snapshot.limiter,
         shiftEvent: snapshot.shiftEvent,
+        speedKmh: snapshot.speedKmh,
+        offRoad: snapshot.offRoad,
       })
       sceneRef.current?.update(dt, snapshot)
 

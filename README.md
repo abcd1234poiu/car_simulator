@@ -51,9 +51,15 @@ Use `npm run lint`, `npm test` and `npm run build` to validate changes.
 - Spring stiffness and absorber damping can be tuned before or during a drive,
   with Comfort, Balanced, Sport and Drift presets. Suspension settings affect
   steering response, body pitch/roll and vertical travel.
-- Car models include sloped glazing, pillars, differentiated grilles, details
-  on the bumpers and wheels, and body motion over changing road grades. The
-  selection-screen 3D preview uses the same model as the driving scene.
+- Car models include sloped glazing, window seals, windshield wipers, projector
+  lamps, door seams, detailed wheels and body motion over changing road grades.
+  The selection-screen 3D preview uses the same model as the driving scene.
+- Meridian GT has a reference-inspired long-hood grand-tourer treatment: a
+  brighter yellow finish, rounded vertical grille, swept lamps, front-fender
+  vents and fine multi-spoke alloys (without licensed badges or assets).
+- Engine audio blends combustion synthesis with bundled loops, and responds to
+  RPM, throttle and gear changes. Intake, tyre and wind noise vary with load,
+  speed and off-road driving.
 - Braking pitches the car forward in its local frame without sideways roll.
   Switching tabs releases controls without opening the pause menu; the pause
   menu opens only from Pause / `P` / `Esc`. Map routes are cached and the HUD

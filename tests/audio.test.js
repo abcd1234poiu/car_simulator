@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { drivingNoiseLevels, engineSampleLevel } from '../src/engine/audio.js'
 
 globalThis.sampleRate = 48000
 globalThis.AudioWorkletProcessor = class {
@@ -60,4 +61,23 @@ test('turbo release and gear change create short transient effects', () => {
   processor.port.onmessage({ data: { type: 'shift', direction: 'up' } })
   processor.process([], [[output]], { rpm: [4000], throttle: [0.8], boost: [0.8] })
   assert.ok(processor.shiftPop > 0 && processor.shiftPop < 1)
+})
+
+test('sample blend follows RPM and load rather than droning at idle', () => {
+  const idle = engineSampleLevel(850, 0, 7500)
+  const cruise = engineSampleLevel(3200, 0.3, 7500)
+  const acceleration = engineSampleLevel(6500, 1, 7500)
+  assert.ok(idle < cruise && cruise < acceleration)
+  assert.ok(engineSampleLevel(6500, 1, 7500, 1, true) < acceleration)
+})
+
+test('tyre and wind layers grow with speed and rough ground', () => {
+  const stopped = drivingNoiseLevels(0)
+  const town = drivingNoiseLevels(55)
+  const highway = drivingNoiseLevels(180)
+  assert.equal(stopped.tyre, 0)
+  assert.equal(stopped.wind, 0)
+  assert.ok(town.tyre > stopped.tyre)
+  assert.ok(highway.wind > town.wind)
+  assert.ok(drivingNoiseLevels(55, true).tyre > town.tyre)
 })

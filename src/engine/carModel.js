@@ -262,6 +262,13 @@ export function createCarModel(car) {
     emissiveIntensity: 2.4,
     roughness: 0.25,
   })
+  const lampLensMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x56728a,
+    metalness: 0.28,
+    roughness: 0.12,
+    clearcoat: 1,
+    clearcoatRoughness: 0.05,
+  })
   const brakeLightMaterial = new THREE.MeshStandardMaterial({
     color: 0x6b0a10,
     emissive: 0xff2531,
@@ -276,9 +283,30 @@ export function createCarModel(car) {
   })
 
   const shape = CAR_SHAPES[car.bodyStyle] ?? CAR_SHAPES.coupe
+  const isGT = car.bodyStyle === 'gt'
+  const gtChromeMaterial = isGT ? chromeMaterial.clone() : null
+  const gtTrimMaterial = isGT ? trimMaterial.clone() : null
+  const gtLensMaterial = isGT ? lampLensMaterial.clone() : null
+  if (isGT) {
+    gtChromeMaterial.side = THREE.DoubleSide
+    gtTrimMaterial.side = THREE.DoubleSide
+    gtLensMaterial.side = THREE.DoubleSide
+  }
   const { length, width } = shape
   const axleZ = length / 2 - 0.92
   const wheelRadius = car.wheelRadius
+
+  const addRod = (start, end, radius, material) => {
+    const a = new THREE.Vector3(...start)
+    const b = new THREE.Vector3(...end)
+    const direction = new THREE.Vector3().subVectors(b, a)
+    const rod = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius, direction.length(), 6), material)
+    rod.position.copy(a).add(b).multiplyScalar(0.5)
+    rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
+    group.add(rod)
+    return rod
+  }
 
   // Main body with a slightly softer bevel and a subtle tumblehome for a more
   // rounded, production-car silhouette.
@@ -303,7 +331,7 @@ export function createCarModel(car) {
   for (const side of [-1, 1]) {
     for (const axle of [-1, 1]) {
       const fender = new THREE.Mesh(fenderGeometry, paintMaterial)
-      fender.scale.set(0.15, 0.4, 0.76)
+      fender.scale.set(isGT ? 0.19 : 0.15, isGT ? 0.43 : 0.4, 0.76)
       fender.position.set(side * (width / 2 - 0.035), wheelRadius + 0.16, axle * axleZ)
       group.add(fender)
     }
@@ -386,22 +414,59 @@ export function createCarModel(car) {
     addPillar(shape.glass[3], shape.glass[2], side)
   }
 
+  // Seals around the front and rear glass, with two blades resting on the
+  // lower windshield. The separate dark edges make the glazing read as real
+  // panels rather than one featureless black cabin.
+  for (const [bottom, top] of [[shape.glass[0], shape.glass[1]],
+    [shape.glass[3], shape.glass[2]]]) {
+    addRod([-shape.glassWidth * 0.48, bottom[1] + 0.033, bottom[0]],
+      [shape.glassWidth * 0.48, bottom[1] + 0.033, bottom[0]], 0.012, trimMaterial)
+    addRod([-shape.roof.width * 0.46, top[1] + 0.033, top[0]],
+      [shape.roof.width * 0.46, top[1] + 0.033, top[0]], 0.012, trimMaterial)
+  }
+  for (const side of [-1, 1]) {
+    const lower = shape.glass[0]
+    const upper = shape.glass[1]
+    const glassPoint = (fraction, x) => [x,
+      lower[1] + (upper[1] - lower[1]) * fraction + 0.045,
+      lower[0] + (upper[0] - lower[0]) * fraction - 0.018]
+    addRod(glassPoint(0.09, side * shape.glassWidth * 0.36),
+      glassPoint(0.23, side * shape.glassWidth * 0.06), 0.012, trimMaterial)
+    addRod(glassPoint(0.09, side * shape.glassWidth * 0.36),
+      glassPoint(0.05, side * shape.glassWidth * 0.42), 0.009, darkChromeMaterial)
+  }
+
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(shape.roof.width, 0.06, shape.roof.length),
     paintMaterial,
   )
   roof.position.set(0, shape.roof.y, shape.roof.z)
   group.add(roof)
+  for (const side of [-1, 1]) {
+    addRod([side * (shape.roof.width / 2 - 0.045), shape.roof.y + 0.045,
+      shape.roof.z - shape.roof.length / 2 + 0.04],
+    [side * (shape.roof.width / 2 - 0.045), shape.roof.y + 0.045,
+      shape.roof.z + shape.roof.length / 2 - 0.04], 0.011, darkChromeMaterial)
+  }
 
   // Hood creases and a center brake lamp add scale cues without licensed
   // emblems or brand-specific bodywork.
   for (const side of [-1, 1]) {
-    const crease = new THREE.Mesh(
-      new THREE.BoxGeometry(0.012, 0.012, Math.max(0.5, length * 0.19)),
-      darkChromeMaterial,
-    )
-    crease.position.set(side * width * 0.23, 0.905, -length / 2 + 0.72)
-    group.add(crease)
+    if (isGT) {
+      addRod([side * width * 0.23, 0.8, -2.07],
+        [side * width * 0.23, 0.875, -1.2], 0.006, darkChromeMaterial)
+      const hoodVent = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, 0.009, 0.12), trimMaterial)
+      hoodVent.position.set(side * 0.38, 0.876, -1.13)
+      group.add(hoodVent)
+    } else {
+      const crease = new THREE.Mesh(
+        new THREE.BoxGeometry(0.012, 0.012, Math.max(0.5, length * 0.19)),
+        darkChromeMaterial,
+      )
+      crease.position.set(side * width * 0.23, 0.905, -length / 2 + 0.72)
+      group.add(crease)
+    }
   }
   const highBrake = new THREE.Mesh(
     new THREE.BoxGeometry(0.42, 0.025, 0.025), brakeLightMaterial,
@@ -423,9 +488,37 @@ export function createCarModel(car) {
     sill.position.set(side * (width / 2 - 0.005), 0.39, 0.02)
     group.add(sill)
 
+    if (isGT) {
+      // A recessed gill immediately behind the front wheel and a lower sill
+      // are prominent cues in the reference's two-seat grand tourer.
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.18, 0.25), trimMaterial)
+      vent.name = 'gt-side-vent'
+      vent.position.set(side * (width / 2 + 0.025), 0.65, -0.58)
+      group.add(vent)
+      for (let stripe = 0; stripe < 3; stripe += 1) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.014, 0.2), darkChromeMaterial)
+        fin.position.set(side * (width / 2 + 0.045), 0.59 + stripe * 0.054, -0.58)
+        group.add(fin)
+      }
+      const rocker = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.085, 1.45), paintMaterial)
+      rocker.position.set(side * (width / 2 + 0.005), 0.35, 0.28)
+      group.add(rocker)
+    }
+
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.045, 0.2), chromeMaterial)
     handle.position.set(side * (width / 2 + 0.012), 0.82, 0.12)
     group.add(handle)
+
+    // Lower door shut line and a recessed handle pocket give the side a
+    // readable front/rear-door silhouette without texture decals.
+    addRod([side * (width / 2 + 0.008), 0.43, -0.2],
+      [side * (width / 2 + 0.008), 0.43, 0.92], 0.006, trimMaterial)
+    const handlePocket = new THREE.Mesh(
+      new THREE.BoxGeometry(0.012, 0.056, 0.23), trimMaterial)
+    handlePocket.position.set(side * (width / 2 + 0.008), 0.82, 0.12)
+    group.add(handlePocket)
+    handle.position.x = side * (width / 2 + 0.022)
 
     const mirrorArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.055, 0.055), trimMaterial)
     mirrorArm.position.set(side * (width / 2 + 0.055), shape.roof.y - 0.22, -length / 2 + 1.45)
@@ -447,26 +540,98 @@ export function createCarModel(car) {
   splitter.position.set(0, 0.3, frontZ - 0.03)
   group.add(splitter)
 
-  const grilleWidth = car.bodyStyle === 'muscle' ? 1.5 : car.bodyStyle === 'hatch' ? 1.02 : 1.24
-  const grilleFrame = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth, 0.3, 0.1), chromeMaterial)
-  grilleFrame.position.set(0, 0.55, frontZ + 0.015)
-  group.add(grilleFrame)
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth - 0.1, 0.22, 0.11), trimMaterial)
-  grille.position.set(0, 0.55, frontZ + 0.03)
-  group.add(grille)
-  for (let i = -3; i <= 3; i += 1) {
-    const slat = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.19, 0.03), chromeMaterial)
-    slat.position.set(i * 0.15, 0.55, frontZ + 0.085)
-    group.add(slat)
+  if (isGT) {
+    const fascia = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), paintMaterial)
+    fascia.scale.set(width * 0.48, 0.21, 0.16)
+    fascia.position.set(0, 0.67, frontZ + 0.035)
+    group.add(fascia)
+
+    // Rounded vertical grille, set ahead of the nose. A black inset and fine
+    // vertical vanes replace the generic rectangular grille.
+    const grilleOutline = new THREE.Shape()
+    grilleOutline.moveTo(-0.48, 0.21)
+    grilleOutline.quadraticCurveTo(-0.59, 0.17, -0.56, 0.07)
+    grilleOutline.lineTo(-0.47, -0.17)
+    grilleOutline.quadraticCurveTo(0, -0.29, 0.47, -0.17)
+    grilleOutline.lineTo(0.56, 0.07)
+    grilleOutline.quadraticCurveTo(0.59, 0.17, 0.48, 0.21)
+    grilleOutline.quadraticCurveTo(0, 0.28, -0.48, 0.21)
+    const frame = new THREE.Mesh(new THREE.ShapeGeometry(grilleOutline), gtChromeMaterial)
+    frame.name = 'gt-grille-frame'
+    frame.position.set(0, 0.58, frontZ - 0.13)
+    group.add(frame)
+    const grille = new THREE.Mesh(new THREE.ShapeGeometry(grilleOutline), gtTrimMaterial)
+    grille.name = 'gt-grille'
+    grille.scale.set(0.91, 0.88, 1)
+    grille.position.set(0, 0.58, frontZ - 0.137)
+    group.add(grille)
+    for (let index = -5; index <= 5; index += 1) {
+      const vane = new THREE.Mesh(
+        new THREE.BoxGeometry(0.017, 0.34 + 0.09 * (1 - Math.abs(index) / 5), 0.015),
+        darkChromeMaterial)
+      vane.position.set(index * 0.085, 0.56, frontZ - 0.148)
+      group.add(vane)
+    }
+    const lowerIntake = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.045, 0.04), trimMaterial)
+    lowerIntake.position.set(0, 0.315, frontZ - 0.13)
+    group.add(lowerIntake)
+  } else {
+    const grilleWidth = car.bodyStyle === 'muscle' ? 1.5 : car.bodyStyle === 'hatch' ? 1.02 : 1.24
+    const grilleFrame = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth, 0.3, 0.1), chromeMaterial)
+    grilleFrame.position.set(0, 0.55, frontZ + 0.015)
+    group.add(grilleFrame)
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth - 0.1, 0.22, 0.11), trimMaterial)
+    grille.position.set(0, 0.55, frontZ + 0.03)
+    group.add(grille)
+    for (let i = -3; i <= 3; i += 1) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.19, 0.03), chromeMaterial)
+      slat.position.set(i * 0.15, 0.55, frontZ + 0.085)
+      group.add(slat)
+    }
   }
 
   for (const side of [-1, 1]) {
+    if (isGT) {
+      const lampShape = new THREE.Shape()
+      lampShape.moveTo(0.43, 0.69)
+      lampShape.quadraticCurveTo(0.58, 0.84, 0.9, 0.87)
+      lampShape.quadraticCurveTo(0.95, 0.79, 0.79, 0.7)
+      lampShape.quadraticCurveTo(0.6, 0.65, 0.43, 0.69)
+      const lamp = new THREE.Mesh(new THREE.ShapeGeometry(lampShape), gtTrimMaterial)
+      lamp.name = 'gt-swept-headlight'
+      lamp.scale.x = side
+      lamp.position.z = frontZ - 0.125
+      group.add(lamp)
+      const lens = new THREE.Mesh(new THREE.ShapeGeometry(lampShape), gtLensMaterial)
+      lens.scale.set(side * 0.86, 0.72, 1)
+      lens.position.set(side * 0.092, 0.2, frontZ - 0.132)
+      group.add(lens)
+      const projector = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.052, 0.052, 0.025, 16), headlightMaterial)
+      projector.rotation.x = Math.PI / 2
+      projector.position.set(side * 0.66, 0.755, frontZ - 0.15)
+      group.add(projector)
+      addRod([side * 0.47, 0.7, frontZ - 0.16],
+        [side * 0.75, 0.695, frontZ - 0.16], 0.012, drlMaterial)
+      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.21, 0.035), trimMaterial)
+      intake.position.set(side * 0.78, 0.43, frontZ - 0.11)
+      group.add(intake)
+      continue
+    }
     const housing = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.18, 0.1), trimMaterial)
     housing.position.set(side * 0.63, 0.73, frontZ + 0.035)
     group.add(housing)
-    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.115, 0.045), headlightMaterial)
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.115, 0.045), lampLensMaterial)
     lens.position.set(side * 0.63, 0.74, frontZ + 0.002)
     group.add(lens)
+    for (const offset of [-0.105, 0.105]) {
+      const projector = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.038, 0.038, 0.026, 12), headlightMaterial)
+      projector.rotation.x = Math.PI / 2
+      projector.position.set(side * 0.63 + offset, 0.74, frontZ - 0.029)
+      group.add(projector)
+    }
     const drl = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.03, 0.035), drlMaterial)
     drl.position.set(side * 0.63, 0.665, frontZ - 0.005)
     group.add(drl)
@@ -495,6 +660,12 @@ export function createCarModel(car) {
   brakeBar.position.set(0, 0.765, rearZ + 0.055)
   group.add(brakeBar)
   for (const side of [-1, 1]) {
+    for (let segment = 0; segment < 3; segment += 1) {
+      const led = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.031, 0.015), brakeLightMaterial)
+      led.position.set(side * (0.46 + segment * 0.105), 0.81, rearZ + 0.063)
+      group.add(led)
+    }
     const reverseLamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.085, 0.04), reverseLightMaterial)
     reverseLamp.position.set(side * 0.55, 0.69, rearZ + 0.055)
     group.add(reverseLamp)
@@ -609,7 +780,10 @@ export function createCarModel(car) {
   hubGeometry.rotateZ(Math.PI / 2)
   const discGeometry = new THREE.CylinderGeometry(wheelRadius * 0.55, wheelRadius * 0.55, 0.025, 24)
   discGeometry.rotateZ(Math.PI / 2)
-  const spokeGeometry = new THREE.BoxGeometry(0.055, wheelRadius * 0.92, 0.065)
+  const spokeCount = isGT ? 10 : 5
+  const spokeGeometry = new THREE.BoxGeometry(isGT ? 0.026 : 0.055,
+    wheelRadius * 0.92, isGT ? 0.038 : 0.065)
+  const lugGeometry = new THREE.SphereGeometry(wheelRadius * 0.035, 6, 4)
   const sidewallGeometry = new THREE.TorusGeometry(wheelRadius * 0.72, wheelRadius * 0.16, 8, 24)
   sidewallGeometry.rotateY(Math.PI / 2)
   const tireGrooveGeometry = new THREE.TorusGeometry(wheelRadius * 0.95, 0.009, 5, 30)
@@ -642,11 +816,18 @@ export function createCarModel(car) {
       hub.position.x = side * 0.155
       spin.add(hub)
 
-      for (let index = 0; index < 5; index += 1) {
+      for (let index = 0; index < spokeCount; index += 1) {
         const spoke = new THREE.Mesh(spokeGeometry, rimMaterial)
-        spoke.rotation.x = (index / 5) * Math.PI * 2
+        spoke.rotation.x = (index / spokeCount) * Math.PI * 2
         spoke.position.x = side * 0.152
         spin.add(spoke)
+        if (index % (spokeCount / 5) === 0) {
+          const angle = (index / spokeCount) * Math.PI * 2
+          const lug = new THREE.Mesh(lugGeometry, darkChromeMaterial)
+          lug.position.set(side * 0.177, Math.cos(angle) * wheelRadius * 0.16,
+            Math.sin(angle) * wheelRadius * 0.16)
+          spin.add(lug)
+        }
       }
 
       const disc = new THREE.Mesh(discGeometry, brakeDiscMaterial)
