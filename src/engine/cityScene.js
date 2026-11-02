@@ -13,6 +13,7 @@ import {
   BUILDINGS,
   CITY_LIMIT,
   CITY_LINKS,
+  COSTA_COAST,
   FIELDS,
   FLYOVERS,
   GENTING,
@@ -29,6 +30,7 @@ import {
   SIDEWALK,
   SPAWN,
   STREETLIGHTS,
+  STREET_PROPS,
   TOWNS,
   TRAFFIC_LIGHTS,
   TREES,
@@ -44,6 +46,7 @@ import { createCarModel, createSunTexture } from './carModel.js'
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 const damp = (current, target, dt, rate) => current + (target - current) * (1 - Math.exp(-rate * dt))
 const TILE = 12
+const SIGN_COLORS = ['#ffcf7a', '#7fe6d0', '#ff8f7a', '#8fbcff', '#ffeab0', '#c9a6ff']
 
 function canvasTexture(width, height, draw) {
   const canvas = document.createElement('canvas')
@@ -113,77 +116,195 @@ function createAsphaltTexture(renderer, base = '#252b33') {
   return texture
 }
 
-function createFacade(style) {
-  const lit = () => {
-    const roll = Math.random()
-    if (roll < 0.32) return 'rgba(255, 214, 150, 0.95)'
-    if (roll < 0.5) return 'rgba(140, 214, 255, 0.9)'
-    if (roll < 0.62) return 'rgba(255, 170, 140, 0.9)'
-    return 'rgba(28, 38, 52, 0.85)'
+function createFacade(style, variant = 0) {
+  const presets = {
+    glass: {
+      base: '#1a2a34', trim: '#2a3a44', glass: '#294652', dark: '#17262f', cols: 6, rows: 4,
+    },
+    modern: {
+      base: '#30353c', trim: '#3f464e', glass: '#3c4a54', dark: '#272e34', cols: 5, rows: 4,
+    },
+    concrete: {
+      base: '#45403a', trim: '#544d43', glass: '#47525a', dark: '#30363a', cols: 5, rows: 4,
+    },
+    brick: {
+      base: '#53342c', trim: '#603e33', glass: '#3f4a52', dark: '#2b2522', cols: 4, rows: 4,
+    },
+    stucco: {
+      base: '#6a5a48', trim: '#756451', glass: '#4a555e', dark: '#343a40', cols: 4, rows: 4,
+    },
+  }
+  const config = presets[style] ?? presets.concrete
+  const variantBases = {
+    glass: ['#1a2a34', '#1d3240', '#16242d', '#20343f'],
+    modern: ['#30353c', '#3a4048', '#292e34', '#424952'],
+    concrete: ['#45403a', '#524c44', '#3b3731', '#5d564c'],
+    brick: ['#53342c', '#633c31', '#482d25', '#70483a'],
+    stucco: ['#7b6450', '#8a6f56', '#6d5846', '#9a7c5e'],
+  }
+  const base = (variantBases[style] ?? variantBases.concrete)[variant % 4]
+  const pattern = ['curtain', 'ribbon', 'punched', 'striped'][variant % 4]
+  const cols = config.cols + (variant % 2)
+  const rows = config.rows + (variant > 1 ? 1 : 0)
+  const litChance = pattern === 'punched' ? 0.24 : pattern === 'ribbon' ? 0.32 : 0.38
+  const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({
+    lit: Math.random() < litChance,
+    warm: Math.random() < 0.64,
+    bright: 0.5 + Math.random() * 0.4,
+  })))
+
+  const draw = (ctx, width, height, emissive) => {
+    ctx.fillStyle = emissive ? '#000000' : base
+    ctx.fillRect(0, 0, width, height)
+    const marginX = 6
+    const marginY = 4
+    const cellW = (width - marginX * 2) / cols
+    const cellH = (height - marginY * 2) / rows
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const cell = grid[row][col]
+        const x = marginX + col * cellW
+        const y = marginY + row * cellH
+        const litColor = cell.warm
+          ? `rgba(255, 208, 150, ${cell.bright})`
+          : `rgba(138, 208, 255, ${cell.bright})`
+
+        if (pattern === 'ribbon') {
+          const glassY = y + cellH * 0.2
+          const glassH = cellH * 0.56
+          if (emissive) {
+            if (cell.lit) {
+              ctx.fillStyle = litColor
+              ctx.fillRect(x + 1, glassY, cellW - 2, glassH)
+            }
+            continue
+          }
+          const glass = ctx.createLinearGradient(0, glassY, 0, glassY + glassH)
+          glass.addColorStop(0, config.glass)
+          glass.addColorStop(1, config.dark)
+          ctx.fillStyle = glass
+          ctx.fillRect(x + 0.5, glassY, cellW - 1, glassH)
+          ctx.fillStyle = 'rgba(255,255,255,0.10)'
+          ctx.fillRect(x + 0.5, glassY, cellW - 1, 1.1)
+          ctx.fillStyle = config.trim
+          ctx.fillRect(x + cellW - 1.3, glassY, 1.3, glassH)
+        } else if (pattern === 'punched') {
+          const wx = x + cellW * 0.22
+          const wy = y + cellH * 0.2
+          const ww = cellW * 0.56
+          const wh = cellH * 0.54
+          if (emissive) {
+            if (cell.lit) {
+              ctx.fillStyle = litColor
+              ctx.fillRect(wx, wy, ww, wh)
+            }
+            continue
+          }
+          ctx.fillStyle = 'rgba(0,0,0,0.32)'
+          ctx.fillRect(wx - 1.3, wy - 1.3, ww + 0.8, wh + 0.8)
+          const glass = ctx.createLinearGradient(0, wy, 0, wy + wh)
+          glass.addColorStop(0, config.glass)
+          glass.addColorStop(1, config.dark)
+          ctx.fillStyle = glass
+          ctx.fillRect(wx, wy, ww, wh)
+          ctx.fillStyle = 'rgba(255,255,255,0.09)'
+          ctx.fillRect(wx, wy, ww, 1.1)
+          ctx.fillStyle = config.trim
+          ctx.fillRect(wx, wy + wh, ww, 1.5)
+        } else if (pattern === 'striped') {
+          const wx = x + cellW * 0.16
+          const ww = cellW * 0.68
+          if (emissive) {
+            if (cell.lit) {
+              ctx.fillStyle = litColor
+              ctx.fillRect(wx, y, ww, cellH)
+            }
+            continue
+          }
+          const glass = ctx.createLinearGradient(wx, 0, wx + ww, 0)
+          glass.addColorStop(0, config.dark)
+          glass.addColorStop(0.5, config.glass)
+          glass.addColorStop(1, config.dark)
+          ctx.fillStyle = glass
+          ctx.fillRect(wx, y, ww, cellH)
+          ctx.fillStyle = 'rgba(255,255,255,0.08)'
+          ctx.fillRect(wx, y, 1.2, cellH)
+          ctx.fillStyle = config.trim
+          ctx.fillRect(wx + ww, y, 1.2, cellH)
+        } else {
+          const wx = x + 0.8
+          const wy = y + 0.8
+          const ww = cellW - 1.6
+          const wh = cellH - 1.6
+          if (emissive) {
+            if (cell.lit) {
+              ctx.fillStyle = litColor
+              ctx.fillRect(wx, wy, ww, wh)
+            }
+            continue
+          }
+          const glass = ctx.createLinearGradient(0, wy, 0, wy + wh)
+          glass.addColorStop(0, config.glass)
+          glass.addColorStop(1, config.dark)
+          ctx.fillStyle = glass
+          ctx.fillRect(wx, wy, ww, wh)
+          ctx.fillStyle = 'rgba(255,255,255,0.07)'
+          ctx.fillRect(wx, wy, ww, 1)
+          ctx.fillStyle = config.trim
+          ctx.fillRect(x + cellW - 1.3, y, 1.3, cellH)
+        }
+      }
+    }
+
+    if (!emissive) {
+      ctx.fillStyle = config.trim
+      for (let row = 0; row <= rows; row += 1) {
+        ctx.fillRect(0, marginY + row * cellH - 1.3, width, 1.3)
+      }
+      // Stronger structural piers every few window bays.
+      for (let col = 0; col <= cols; col += 3) {
+        ctx.fillRect(marginX + col * cellW - 0.8, 0, 1.6, height)
+      }
+      const shade = ctx.createLinearGradient(0, 0, 0, height)
+      shade.addColorStop(0, 'rgba(255,255,255,0.06)')
+      shade.addColorStop(0.55, 'rgba(0,0,0,0)')
+      shade.addColorStop(1, 'rgba(0,0,0,0.22)')
+      ctx.fillStyle = shade
+      ctx.fillRect(0, 0, width, height)
+    }
   }
 
-  const config = {
-    glass: { base: '#18242f', trim: '#24384a', window: '#3a6c86', cols: 6, rows: 7 },
-    modern: { base: '#262a31', trim: '#333a44', window: '#4a4a52', cols: 5, rows: 8 },
-    concrete: { base: '#33312d', trim: '#403c35', window: '#3c3a36', cols: 5, rows: 7 },
-    brick: { base: '#382521', trim: '#4a2f29', window: '#3a2c28', cols: 5, rows: 7 },
-  }[style]
-
-  const cells = []
-  const map = canvasTexture(128, 128, (ctx, width, height) => {
-    ctx.fillStyle = config.base
-    ctx.fillRect(0, 0, width, height)
-
-    const marginX = 8
-    const marginY = 5
-    const cellW = (width - marginX * 2) / config.cols
-    const cellH = (height - marginY * 2) / config.rows
-
-    for (let row = 0; row < config.rows; row += 1) {
-      for (let col = 0; col < config.cols; col += 1) {
-        const x = marginX + col * cellW + 1.5
-        const y = marginY + row * cellH + 2
-        const on = Math.random()
-        cells.push(on)
-        ctx.fillStyle = on < 0.7 ? config.window : lit()
-        ctx.fillRect(x, y, cellW - 3, cellH - 4)
-        ctx.fillStyle = 'rgba(255,255,255,0.09)'
-        ctx.fillRect(x, y, cellW - 3, 1)
-      }
-    }
-
-    ctx.fillStyle = config.trim
-    for (let row = 0; row < config.rows; row += 1) {
-      ctx.fillRect(0, marginY + row * cellH - 1, width, 1.4)
-    }
-  })
-
-  let index = 0
-  const emissive = canvasTexture(128, 128, (ctx, width, height) => {
-    ctx.fillStyle = '#000000'
-    ctx.fillRect(0, 0, width, height)
-    const marginX = 8
-    const marginY = 5
-    const cellW = (width - marginX * 2) / config.cols
-    const cellH = (height - marginY * 2) / config.rows
-    for (let row = 0; row < config.rows; row += 1) {
-      for (let col = 0; col < config.cols; col += 1) {
-        const on = cells[index]
-        index += 1
-        if (on === undefined || on < 0.7) continue
-        const x = marginX + col * cellW + 1.5
-        const y = marginY + row * cellH + 2
-        ctx.fillStyle = on < 0.86 ? 'rgba(255, 206, 140, 1)' : 'rgba(130, 210, 255, 1)'
-        ctx.fillRect(x, y, cellW - 3, cellH - 4)
-      }
-    }
-  })
-
+  const map = canvasTexture(256, 256, (ctx, width, height) => draw(ctx, width, height, false))
+  const emissive = canvasTexture(256, 256, (ctx, width, height) => draw(ctx, width, height, true))
   for (const texture of [map, emissive]) {
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping
   }
   return { map, emissive }
+}
+
+function createBillboardTexture() {
+  const texture = canvasTexture(512, 256, (ctx, width, height) => {
+    const gradient = ctx.createLinearGradient(0, 0, width, height)
+    gradient.addColorStop(0, '#0a2f3a')
+    gradient.addColorStop(1, '#123f4a')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, width, height)
+    ctx.strokeStyle = '#5cf3d5'
+    ctx.lineWidth = 10
+    ctx.strokeRect(10, 10, width - 20, height - 20)
+    ctx.fillStyle = '#f6e7b0'
+    ctx.font = '900 74px Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('COSTA VISTA', width / 2, 96)
+    ctx.fillStyle = '#9ff5e6'
+    ctx.font = '700 42px Arial, sans-serif'
+    ctx.fillText('THE COAST IS OPEN', width / 2, 176)
+  })
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
 }
 
 function createCrosswalkTexture() {
@@ -239,7 +360,7 @@ function createStopMarker(label, color) {
   return group
 }
 
-function scaleBoxUvs(geometry, width, height, depth) {
+function scaleBoxUvs(geometry, width, height, depth, tile = TILE) {
   const uv = geometry.attributes.uv
   const faces = [
     [depth, height],
@@ -253,10 +374,30 @@ function scaleBoxUvs(geometry, width, height, depth) {
     const [uSize, vSize] = faces[face]
     for (let corner = 0; corner < 4; corner += 1) {
       const index = face * 4 + corner
-      uv.setXY(index, uv.getX(index) * (uSize / TILE), uv.getY(index) * (vSize / TILE))
+      uv.setXY(index, uv.getX(index) * (uSize / tile), uv.getY(index) * (vSize / tile))
     }
   }
   uv.needsUpdate = true
+}
+
+function scaleCylinderUvs(geometry, radius, height, tile = TILE) {
+  const uv = geometry.attributes.uv
+  const circumference = Math.PI * 2 * radius
+  for (let index = 0; index < uv.count; index += 1) {
+    uv.setXY(index, uv.getX(index) * (circumference / tile), uv.getY(index) * (height / tile))
+  }
+  uv.needsUpdate = true
+}
+
+function tintGeometry(geometry, color) {
+  const count = geometry.getAttribute('position').count
+  const colors = new Float32Array(count * 3)
+  for (let index = 0; index < count; index += 1) {
+    colors[index * 3] = color.r
+    colors[index * 3 + 1] = color.g
+    colors[index * 3 + 2] = color.b
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 }
 
 function instanceMesh(geometry, material, transforms) {
@@ -297,9 +438,18 @@ function createStreetlights() {
   const head = new THREE.BoxGeometry(0.62, 0.14, 0.26)
   head.translate(1.85, 5.98, 0)
 
-  group.add(instanceMesh(pole, poleMaterial, STREETLIGHTS))
-  group.add(instanceMesh(arm, poleMaterial, STREETLIGHTS))
-  group.add(instanceMesh(head, lampMaterial, STREETLIGHTS))
+  const lights = []
+  const seen = new Set()
+  for (const lamp of STREETLIGHTS) {
+    const key = `${lamp.x.toFixed(1)}:${lamp.z.toFixed(1)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    lights.push(lamp)
+  }
+
+  group.add(instanceMesh(pole, poleMaterial, lights))
+  group.add(instanceMesh(arm, poleMaterial, lights))
+  group.add(instanceMesh(head, lampMaterial, lights))
   return group
 }
 
@@ -358,10 +508,10 @@ export class CityScene {
 
     this.clock = 0
 
-    const hemi = new THREE.HemisphereLight(0x9db8ff, 0x11151a, 1.5)
+    const hemi = new THREE.HemisphereLight(0x9db8ff, 0x11151a, 1.9)
     this.scene.add(hemi)
 
-    const key = new THREE.DirectionalLight(0xffbb87, 2.4)
+    const key = new THREE.DirectionalLight(0xffbb87, 2.8)
     key.position.set(-90, 120, -80)
     this.scene.add(key)
 
@@ -384,6 +534,7 @@ export class CityScene {
     this.scene.add(sun)
 
     this.buildGround()
+    this.buildCoast()
     this.buildTerrain()
     this.buildMountain()
     this.buildRoads()
@@ -393,6 +544,7 @@ export class CityScene {
     this.buildParks()
     this.buildTrees()
     this.buildStreetFurniture()
+    this.buildStreetProps()
     this.buildFlyovers()
     this.buildParkedCars()
     this.buildSkyline()
@@ -516,6 +668,72 @@ export class CityScene {
     this.scene.add(ground)
   }
 
+  buildCoast() {
+    const { ocean, beach } = COSTA_COAST
+    const water = new THREE.Mesh(
+      new THREE.PlaneGeometry(ocean.maxX - ocean.minX, ocean.maxZ - ocean.minZ),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x0f4a5e,
+        roughness: 0.16,
+        metalness: 0.32,
+        clearcoat: 1,
+        clearcoatRoughness: 0.1,
+        transparent: true,
+        opacity: 0.96,
+      }),
+    )
+    water.rotation.x = -Math.PI / 2
+    water.position.set(
+      (ocean.minX + ocean.maxX) / 2,
+      0.012,
+      (ocean.minZ + ocean.maxZ) / 2,
+    )
+    this.scene.add(water)
+
+    const sand = new THREE.Mesh(
+      new THREE.PlaneGeometry(beach.maxX - beach.minX, beach.maxZ - beach.minZ),
+      new THREE.MeshStandardMaterial({ color: 0xb9a071, roughness: 1 }),
+    )
+    sand.rotation.x = -Math.PI / 2
+    sand.position.set(
+      (beach.minX + beach.maxX) / 2,
+      0.018,
+      (beach.minZ + beach.maxZ) / 2,
+    )
+    this.scene.add(sand)
+
+    // White surf line where the sand meets the water.
+    const surf = new THREE.Mesh(
+      new THREE.PlaneGeometry(26, beach.maxZ - beach.minZ),
+      new THREE.MeshBasicMaterial({
+        color: 0xd8f1f6,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+      }),
+    )
+    surf.rotation.x = -Math.PI / 2
+    surf.position.set(ocean.maxX + 10, 0.021, (beach.minZ + beach.maxZ) / 2)
+    this.scene.add(surf)
+
+    // A simple pier reaching into the ocean.
+    const pierMaterial = new THREE.MeshStandardMaterial({ color: 0x6b5944, roughness: 0.95 })
+    const pier = new THREE.Mesh(new THREE.BoxGeometry(520, 0.45, 20), pierMaterial)
+    pier.position.set(ocean.maxX - 250, 0.62, 3000)
+    this.scene.add(pier)
+    const pylonTransforms = []
+    for (let x = ocean.maxX - 480; x <= ocean.maxX + 10; x += 30) {
+      for (const side of [-1, 1]) {
+        pylonTransforms.push({ x, y: 0, z: 3000 + side * 8, sx: 1.1, sy: 2.6, sz: 1.1 })
+      }
+    }
+    this.scene.add(instanceMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x4c4034, roughness: 1 }),
+      pylonTransforms,
+    ))
+  }
+
   buildTerrain() {
     // Open fields between the two towns.
     for (const field of FIELDS) {
@@ -568,6 +786,8 @@ export class CityScene {
       roughness: 0.4,
     })
     for (const link of CITY_LINKS) {
+      if (link.z < RIVER.zMin || link.z > RIVER.zMax) continue
+      if (RIVER.x < link.xMin || RIVER.x > link.xMax) continue
       for (const side of [-1, 1]) {
         const rail = new THREE.Mesh(
           new THREE.BoxGeometry(RIVER.halfWidth * 2 + 26, 0.7, 0.24),
@@ -949,6 +1169,7 @@ export class CityScene {
   buildRoads() {
     const asphalt = createAsphaltTexture(this.renderer)
     const roadCache = new Map()
+    const roadKeys = new Set()
 
     const roadEntry = (width, length) => {
       const key = `${width}:${length}`
@@ -970,6 +1191,9 @@ export class CityScene {
     }
 
     const addAxisRoad = (x, z, width, length, vertical) => {
+      const key = `${vertical ? 'v' : 'h'}:${x.toFixed(1)}:${z.toFixed(1)}:${width.toFixed(1)}:${length.toFixed(1)}`
+      if (roadKeys.has(key)) return null
+      roadKeys.add(key)
       const entry = roadEntry(width, length)
       const mesh = new THREE.Mesh(entry.geometry, entry.material)
       mesh.rotation.x = -Math.PI / 2
@@ -1038,6 +1262,14 @@ export class CityScene {
       }
     }
 
+    const dashKeys = new Set()
+    const uniqueDashes = dashTransforms.filter((dash) => {
+      const key = `${dash.x.toFixed(1)}:${dash.z.toFixed(1)}:${dash.ry ?? 0}`
+      if (dashKeys.has(key)) return false
+      dashKeys.add(key)
+      return true
+    })
+
     const dashGeometry = new THREE.PlaneGeometry(0.24, 3.4)
     const dashMaterial = new THREE.MeshStandardMaterial({
       color: 0xdfe7f2,
@@ -1045,7 +1277,7 @@ export class CityScene {
       emissiveIntensity: 0.24,
       roughness: 0.7,
     })
-    const dashes = instanceMesh(dashGeometry, dashMaterial, dashTransforms)
+    const dashes = instanceMesh(dashGeometry, dashMaterial, uniqueDashes)
     dashes.geometry.rotateX(-Math.PI / 2)
     this.scene.add(dashes)
     // Painted crosswalks on each approach to every intersection.
@@ -1070,6 +1302,13 @@ export class CityScene {
     for (const town of TOWNS) {
       addCrosswalks(town.xLines, town.zLines, (line) => townRoadHalfAt(town, line))
     }
+    const crosswalkKeys = new Set()
+    const uniqueCrosswalks = crosswalkTransforms.filter((mark) => {
+      const key = `${mark.x.toFixed(1)}:${mark.z.toFixed(1)}:${mark.ry ?? 0}`
+      if (crosswalkKeys.has(key)) return false
+      crosswalkKeys.add(key)
+      return true
+    })
     const crosswalkGeometry = new THREE.PlaneGeometry(14.5, 3.4)
     crosswalkGeometry.rotateX(-Math.PI / 2)
     const crosswalkMaterial = new THREE.MeshStandardMaterial({
@@ -1079,7 +1318,7 @@ export class CityScene {
       roughness: 0.8,
       depthWrite: false,
     })
-    this.scene.add(instanceMesh(crosswalkGeometry, crosswalkMaterial, crosswalkTransforms))
+    this.scene.add(instanceMesh(crosswalkGeometry, crosswalkMaterial, uniqueCrosswalks))
 
     // Autobahn exit links connect Metro City and the towns to the A1.
     for (const link of CITY_LINKS) {
@@ -1090,7 +1329,7 @@ export class CityScene {
         link.xMax - link.xMin,
         false,
       )
-      surface.position.y = 0.018
+      if (surface) surface.position.y = 0.018
     }
 
   }
@@ -1249,6 +1488,7 @@ export class CityScene {
   buildBlocks() {
     const sidewalkTransforms = []
     const lotTransforms = []
+    const curbTransforms = []
     PARKS.forEach((park) => {
       lotTransforms.push({
         x: park.x,
@@ -1261,7 +1501,15 @@ export class CityScene {
       })
     })
 
+    const curbOffset = LOT_HALF + SIDEWALK + 2.4
+    const curbSpan = (LOT_HALF + SIDEWALK) * 2 + 4.8
     ALL_BLOCK_CENTERS.forEach(({ x, z }) => {
+      curbTransforms.push(
+        { x, y: 0.12, z: z + curbOffset, sx: curbSpan, sy: 0.24, sz: 0.55 },
+        { x, y: 0.12, z: z - curbOffset, sx: curbSpan, sy: 0.24, sz: 0.55 },
+        { x: x + curbOffset, y: 0.12, z, sx: 0.55, sy: 0.24, sz: curbSpan },
+        { x: x - curbOffset, y: 0.12, z, sx: 0.55, sy: 0.24, sz: curbSpan },
+      )
       sidewalkTransforms.push({
         x,
         y: 0.02,
@@ -1290,34 +1538,65 @@ export class CityScene {
     const slabMaterial = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0.02 })
     this.scene.add(instanceMesh(slab, slabMaterial, sidewalkTransforms))
     this.scene.add(instanceMesh(slab, slabMaterial.clone(), lotTransforms))
+    this.scene.add(instanceMesh(
+      slab,
+      new THREE.MeshStandardMaterial({ color: 0x6d7275, roughness: 0.8, metalness: 0.08 }),
+      curbTransforms,
+    ))
   }
 
   buildBuildings() {
     const buckets = new Map()
     const roofTransforms = []
     const gableTransforms = []
-    const unitTransforms = []
+    const storefrontTransforms = []
+    const signTransforms = []
+    const awningTransforms = []
+    const balconyTransforms = []
+    const hvacTransforms = []
+    const tankTransforms = []
     const antennaTransforms = []
+    const billboardTransforms = []
+    const finTransforms = []
+    const spireTransforms = []
+    const storefrontMullionTransforms = []
+    const neonTransforms = []
+    const wallBillboardTransforms = []
 
     for (const building of BUILDINGS) {
+      const tint = new THREE.Color(building.tint ?? '#ffffff')
+      const tile = 10 + (building.seed % 5) * 1.8
       for (const tier of building.tiers ?? [{ ...building, y: 0 }]) {
-        const geometry = new THREE.BoxGeometry(tier.width, tier.height, tier.depth)
-        scaleBoxUvs(geometry, tier.width, tier.height, tier.depth)
+        let geometry
+        if (building.shape === 'cylinder') {
+          const radius = Math.min(tier.width, tier.depth) / 2
+          geometry = new THREE.CylinderGeometry(radius, radius, tier.height, 14, 1, true)
+          scaleCylinderUvs(geometry, radius, tier.height, tile)
+        } else {
+          geometry = new THREE.BoxGeometry(tier.width, tier.height, tier.depth)
+          scaleBoxUvs(geometry, tier.width, tier.height, tier.depth, tile)
+        }
         geometry.translate(tier.x, tier.y + tier.height / 2, tier.z)
+        tintGeometry(geometry, tint)
 
-        const variant = building.seed % 3
+        const variant = building.seed % 4
         const bucketKey = `${building.style}:${variant}`
         if (!buckets.has(bucketKey)) buckets.set(bucketKey, [])
         buckets.get(bucketKey).push(geometry)
       }
 
+      const roofX = building.roofX ?? building.x
+      const roofZ = building.roofZ ?? building.z
+      const roofWidth = building.roofWidth ?? building.width
+      const roofDepth = building.roofDepth ?? building.depth
+      const cylinder = building.shape === 'cylinder'
       const roof = {
-        x: building.roofX ?? building.x,
+        x: roofX,
         y: building.height + 0.22,
-        z: building.roofZ ?? building.z,
-        sx: (building.roofWidth ?? building.width) + 0.55,
-        sy: 0.44,
-        sz: (building.roofDepth ?? building.depth) + 0.55,
+        z: roofZ,
+        sx: (cylinder ? Math.min(roofWidth, roofDepth) : roofWidth) + 1.25,
+        sy: 0.5,
+        sz: (cylinder ? Math.min(roofWidth, roofDepth) : roofDepth) + 1.25,
         color: new THREE.Color(building.roof),
       }
 
@@ -1326,9 +1605,9 @@ export class CityScene {
           x: roof.x,
           y: building.height + 1.4,
           z: roof.z,
-          sx: (building.roofWidth ?? building.width) * 0.62,
+          sx: roofWidth * 0.62,
           sy: 2.8,
-          sz: (building.roofDepth ?? building.depth) * 0.62,
+          sz: roofDepth * 0.62,
           ry: Math.PI / 4,
           color: new THREE.Color(building.roof),
         })
@@ -1336,39 +1615,182 @@ export class CityScene {
         roofTransforms.push(roof)
       }
 
-      if (building.height > 24) {
-        unitTransforms.push({
-          x: roof.x + ((building.seed % 5) - 2) * 1.4,
-          y: building.height + 1.5,
-          z: roof.z + (((building.seed >> 3) % 5) - 2) * 1.4,
-          sx: Math.max(2.6, (building.roofWidth ?? building.width) * 0.26),
-          sy: 2.4,
-          sz: Math.max(2.6, (building.roofDepth ?? building.depth) * 0.26),
+      if (building.storefront) {
+        storefrontTransforms.push({
+          x: building.x,
+          y: building.storefrontHeight / 2 + 0.04,
+          z: building.z,
+          sx: building.width + 0.3,
+          sy: building.storefrontHeight,
+          sz: building.depth + 0.3,
+        })
+        signTransforms.push({
+          x: building.x,
+          y: building.storefrontHeight + 0.55,
+          z: building.z + building.depth / 2 + 0.18,
+          sx: Math.min(building.width * 0.72, 14),
+          sy: 0.62,
+          sz: 0.18,
+          color: new THREE.Color(SIGN_COLORS[building.seed % SIGN_COLORS.length]),
+        })
+        const mullions = Math.min(5, Math.max(2, Math.round(building.width / 5)))
+        for (let index = 0; index < mullions; index += 1) {
+          storefrontMullionTransforms.push({
+            x: building.x - building.width / 2 +
+              (building.width * (index + 1)) / (mullions + 1),
+            y: building.storefrontHeight / 2 + 0.04,
+            z: building.z + building.depth / 2 + 0.2,
+            sx: 0.14,
+            sy: building.storefrontHeight,
+            sz: 0.16,
+            color: new THREE.Color('#26343c'),
+          })
+        }
+        if (building.seed % 6 === 0) {
+          neonTransforms.push({
+            x: building.x + building.width / 2 + 0.55,
+            y: 5.5 + (building.seed % 4),
+            z: building.z + building.depth / 2 - 2,
+            sx: 0.3,
+            sy: 4.5 + (building.seed % 5),
+            sz: 1.1,
+            color: new THREE.Color(SIGN_COLORS[(building.seed + 2) % SIGN_COLORS.length]),
+          })
+        }
+        if (building.seed % 11 === 0 && building.height > 14) {
+          wallBillboardTransforms.push({
+            x: building.x,
+            y: Math.min(15, building.height * 0.4),
+            z: building.z + building.depth / 2 + 0.35,
+            sx: Math.min(11, building.width * 0.8),
+            sy: 4.2,
+            sz: 1,
+          })
+        }
+      }
+
+      for (const awning of building.awnings ?? []) {
+        awningTransforms.push({
+          x: awning.x,
+          y: awning.y,
+          z: awning.z,
+          sx: awning.w,
+          sy: awning.h,
+          sz: awning.d,
+          color: new THREE.Color(awning.color),
         })
       }
 
-      if (building.height > 105 && building.seed % 3 === 0) {
-        antennaTransforms.push({
-          x: roof.x,
-          y: building.height + 2,
-          z: roof.z,
-          sx: 1,
-          sy: 6 + (building.seed % 7) * 1.4,
-          sz: 1,
+      for (const balcony of building.balconies ?? []) {
+        balconyTransforms.push({
+          x: balcony.x,
+          y: balcony.y,
+          z: balcony.z,
+          sx: balcony.w,
+          sy: balcony.h,
+          sz: balcony.d,
+          color: new THREE.Color(0x2d333a),
         })
+      }
+
+      if (building.shape !== 'cylinder' && building.height > 55 &&
+        (building.style === 'glass' || building.style === 'modern')) {
+        const shaft = building.tiers?.[building.tiers.length - 1] ?? building
+        const finHeight = Math.max(8, shaft.height - 2)
+        const finBase = (shaft.y ?? 0) + 1
+        const finCount = 2 + (building.seed % 3)
+        for (let index = 0; index < finCount; index += 1) {
+          const offset = (index - (finCount - 1) / 2) * (shaft.width / (finCount + 1))
+          finTransforms.push({
+            x: shaft.x + offset,
+            y: finBase + finHeight / 2,
+            z: shaft.z + shaft.depth / 2 + 0.55,
+            sx: 0.24,
+            sy: finHeight,
+            sz: 1.15,
+            color: new THREE.Color('#2a3742'),
+          })
+          if (shaft.width > 19) {
+            finTransforms.push({
+              x: shaft.x + shaft.width / 2 + 0.55,
+              y: finBase + finHeight / 2,
+              z: shaft.z + offset,
+              sx: 1.15,
+              sy: finHeight,
+              sz: 0.24,
+              color: new THREE.Color('#2a3742'),
+            })
+          }
+        }
+      }
+
+      for (const prop of building.roofProps ?? []) {
+        if (prop.type === 'antenna') {
+          antennaTransforms.push({
+            x: prop.x,
+            y: prop.y,
+            z: prop.z,
+            sx: 1,
+            sy: prop.h,
+            sz: 1,
+          })
+        } else if (prop.type === 'billboard') {
+          billboardTransforms.push({
+            x: prop.x,
+            y: prop.y + prop.h / 2 + 0.4,
+            z: prop.z,
+            sx: prop.w,
+            sy: prop.h,
+            sz: 1,
+          })
+        } else if (prop.type === 'spire') {
+          spireTransforms.push({
+            x: prop.x,
+            y: prop.y + prop.h / 2,
+            z: prop.z,
+            sx: prop.w,
+            sy: prop.h,
+            sz: prop.d,
+            color: new THREE.Color('#9aa4ad'),
+          })
+        } else if (prop.type === 'tank') {
+          tankTransforms.push({
+            x: prop.x,
+            y: prop.y + prop.h / 2,
+            z: prop.z,
+            sx: prop.w,
+            sy: prop.h,
+            sz: prop.d,
+            color: new THREE.Color('#8d9399'),
+          })
+        } else {
+          const color = prop.type === 'hvac'
+            ? '#8b9297'
+            : prop.type === 'chimney' ? '#5a3b2e' : '#6f767c'
+          hvacTransforms.push({
+            x: prop.x,
+            y: prop.y + prop.h / 2,
+            z: prop.z,
+            sx: prop.w,
+            sy: prop.h,
+            sz: prop.d,
+            color: new THREE.Color(color),
+          })
+        }
       }
     }
 
     for (const [bucketKey, geometries] of buckets.entries()) {
-      const style = bucketKey.split(':')[0]
-      const facade = createFacade(style)
+      const [style, variantText] = bucketKey.split(':')
+      const facade = createFacade(style, Number(variantText))
       const material = new THREE.MeshStandardMaterial({
         map: facade.map,
         emissive: 0xffffff,
         emissiveMap: facade.emissive,
-        emissiveIntensity: 1.05,
+        emissiveIntensity: 0.78,
         roughness: 0.58,
         metalness: 0.35,
+        vertexColors: true,
       })
       const merged = mergeGeometries(geometries)
       geometries.forEach((geometry) => geometry.dispose())
@@ -1376,10 +1798,12 @@ export class CityScene {
     }
 
     const box = new THREE.BoxGeometry(1, 1, 1)
-    const roofMaterial = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.15 })
-    this.scene.add(instanceMesh(box, roofMaterial, roofTransforms))
+    this.scene.add(instanceMesh(
+      box,
+      new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.15 }),
+      roofTransforms,
+    ))
 
-    // Pitched roofs for low residential houses and some riverside buildings.
     const gableGeometry = new THREE.ConeGeometry(1, 1, 4)
     this.scene.add(instanceMesh(
       gableGeometry,
@@ -1387,13 +1811,77 @@ export class CityScene {
       gableTransforms,
     ))
 
-    const unitMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1f242b,
-      roughness: 0.8,
-      metalness: 0.2,
-    })
-    if (unitTransforms.length) {
-      this.scene.add(instanceMesh(box, unitMaterial, unitTransforms))
+    if (storefrontTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshPhysicalMaterial({
+          color: 0x1b2b33,
+          roughness: 0.12,
+          metalness: 0.55,
+          clearcoat: 1,
+          clearcoatRoughness: 0.08,
+          emissive: 0x184c5c,
+          emissiveIntensity: 1.05,
+        }),
+        storefrontTransforms,
+      ))
+    }
+
+    if (signTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+        signTransforms,
+      ))
+    }
+
+    if (storefrontMullionTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5 }),
+        storefrontMullionTransforms,
+      ))
+    }
+
+    if (neonTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+        neonTransforms,
+      ))
+    }
+
+    if (awningTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }),
+        awningTransforms,
+      ))
+    }
+
+    if (balconyTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.35 }),
+        balconyTransforms,
+      ))
+    }
+
+    if (hvacTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.25 }),
+        hvacTransforms,
+      ))
+    }
+
+    if (tankTransforms.length) {
+      const tankGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 10)
+      this.scene.add(instanceMesh(
+        tankGeometry,
+        new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.4 }),
+        tankTransforms,
+      ))
     }
 
     if (antennaTransforms.length) {
@@ -1404,6 +1892,42 @@ export class CityScene {
         new THREE.MeshStandardMaterial({ color: 0x8d9399, metalness: 0.8, roughness: 0.4 }),
         antennaTransforms,
       ))
+    }
+
+    if (finTransforms.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.55 }),
+        finTransforms,
+      ))
+    }
+
+    if (spireTransforms.length) {
+      const spireGeometry = new THREE.ConeGeometry(0.5, 1, 8)
+      this.scene.add(instanceMesh(
+        spireGeometry,
+        new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.7 }),
+        spireTransforms,
+      ))
+    }
+
+    if (billboardTransforms.length || wallBillboardTransforms.length) {
+      const billboardTexture = createBillboardTexture()
+      const billboardMaterial = new THREE.MeshStandardMaterial({
+        map: billboardTexture,
+        emissive: 0xffffff,
+        emissiveMap: billboardTexture,
+        emissiveIntensity: 0.85,
+        side: THREE.DoubleSide,
+        roughness: 0.6,
+      })
+      const billboardGeometry = new THREE.PlaneGeometry(1, 1)
+      if (billboardTransforms.length) {
+        this.scene.add(instanceMesh(billboardGeometry, billboardMaterial, billboardTransforms))
+      }
+      if (wallBillboardTransforms.length) {
+        this.scene.add(instanceMesh(billboardGeometry, billboardMaterial, wallBillboardTransforms))
+      }
     }
   }
 
@@ -1487,11 +2011,82 @@ export class CityScene {
 
   buildStreetFurniture() {
     this.scene.add(createStreetlights())
+    const seenSignals = new Set()
     for (const signal of TRAFFIC_LIGHTS) {
+      const key = `${signal.x.toFixed(1)}:${signal.z.toFixed(1)}`
+      if (seenSignals.has(key)) continue
+      seenSignals.add(key)
       const light = createTrafficLight()
       light.position.set(signal.x, 0.06, signal.z)
       light.rotation.y = signal.rotationY
       this.scene.add(light)
+    }
+  }
+
+  buildStreetProps() {
+    const benches = []
+    const bins = []
+    const hydrants = []
+    const meters = []
+    for (const prop of STREET_PROPS) {
+      if (prop.type === 'bench') {
+        benches.push({
+          x: prop.x,
+          y: 0.5,
+          z: prop.z,
+          sx: 1.9,
+          sy: 0.14,
+          sz: 0.56,
+          ry: prop.ry,
+          color: new THREE.Color('#6b4a2f'),
+        })
+        benches.push({
+          x: prop.x + Math.sin(prop.ry) * 0.26,
+          y: 0.86,
+          z: prop.z + Math.cos(prop.ry) * 0.26,
+          sx: 1.9,
+          sy: 0.52,
+          sz: 0.12,
+          ry: prop.ry,
+          color: new THREE.Color('#6b4a2f'),
+        })
+      } else if (prop.type === 'bin') {
+        bins.push({ x: prop.x, y: 0.55, z: prop.z, sx: 0.7, sy: 1.1, sz: 0.7 })
+      } else if (prop.type === 'hydrant') {
+        hydrants.push({ x: prop.x, y: 0.42, z: prop.z, sx: 0.34, sy: 0.84, sz: 0.34 })
+      } else {
+        meters.push({ x: prop.x, y: 0.56, z: prop.z, sx: 0.12, sy: 1.12, sz: 0.12 })
+      }
+    }
+
+    const box = new THREE.BoxGeometry(1, 1, 1)
+    if (benches.length) {
+      this.scene.add(instanceMesh(
+        box,
+        new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.05 }),
+        benches,
+      ))
+    }
+    if (bins.length) {
+      this.scene.add(instanceMesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+        new THREE.MeshStandardMaterial({ color: 0x2f4a3a, roughness: 0.7, metalness: 0.3 }),
+        bins,
+      ))
+    }
+    if (hydrants.length) {
+      this.scene.add(instanceMesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
+        new THREE.MeshStandardMaterial({ color: 0xa23a32, roughness: 0.55, metalness: 0.2 }),
+        hydrants,
+      ))
+    }
+    if (meters.length) {
+      this.scene.add(instanceMesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 1, 6),
+        new THREE.MeshStandardMaterial({ color: 0x4a5158, roughness: 0.5, metalness: 0.6 }),
+        meters,
+      ))
     }
   }
 

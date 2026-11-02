@@ -23,10 +23,11 @@ and `npm run build` to create a production build.
   Midtown, Old Town, Harbor District, University Quarter, Industrial Park and
   Garden Suburbs. Five major avenues, a river and pedestrian flyovers break up
   the grid.
-- Six urban areas share the world: Metro City plus Riverside, Northgate,
-  Southport, Highland and Suncoast. The **A1 East Link** runs end-to-end from
-  Metro City through Riverside, Highland and Suncoast, while the A1 north-south
-  trunk and its exits connect Northgate and Southport. Cross-town fares and
+- Twelve urban areas share the world: Metro City, Riverside, Northgate,
+  Southport, Highland, Suncoast, and the six Costa Vista districts. The **A1
+  East Link** runs end-to-end from Metro City through Riverside, Highland and
+  Suncoast, while the A1 north-south trunk and its exits connect Northgate,
+  Southport and the extended Costa Vista corridor. Cross-town fares and
   free-roam trips use the same routing and map.
 - Two mountain routes built from **real road geometry and real SRTM elevation
   data**. **Genting Pass** is north of Metro City, converted from the Genting
@@ -39,9 +40,13 @@ and `npm run build` to create a production build.
   mountain loop instead of two dead ends. The data lives in
   `src/maps/gentingRoad.js` and `src/maps/batangRoad.js`.
 - District-aware generation changes building height, palette, roof style, park
-  density, tree cover and landmark names. Towers get podiums and slimmer shafts,
-  low residential blocks get pitched roofs, paved plazas with fountains break up
-  the blocks, and building facades vary across the city.
+  density, tree cover and landmark names. Buildings use varied massing rather
+  than single boxes: podiums, setbacks, attached wings, cylindrical towers,
+  spires and roof equipment. Commercial fronts get glass storefront bands,
+  awnings, neon signs and billboards; residential blocks get detached houses,
+  balconies, pitched roofs and yards. Sidewalks have curbs, street trees,
+  benches, bins, hydrants and parking meters, and the street grid carries
+  parked cars and lane markings.
 - World-space arcade vehicle model with steering, lateral grip, wheelspin,
   solid building/parked-car/river-wall collisions and an off-road grip penalty.
   A gentle keyboard steer assist realigns the car with the road whenever the
@@ -56,13 +61,22 @@ and `npm run build` to create a production build.
   clamps far targets to the map edge. The same map is used on the dispatch
   phone, and the map button opens a full-world overview with district labels,
   the river, autobahn and every town.
+- **Costa Vista**, a large GTA-inspired coastal metropolis south of Metro City:
+  six connected districts (Costa Beach, Downtown Costa, East Costa, South
+  Beach, Southside and Costa Airport), a beach with a pier and ocean, a dense
+  downtown skyline, wide major avenues, the extended A1 autobahn and the
+  east-west Costa Freeway. About 30 km² of new drivable city, bringing the
+  world to GTA-scale extents. The area is fully drivable, populated with
+  buildings, parks, traffic, parked cars and taxi stops, and uses original
+  generated geometry and names rather than GTA assets.
 - Click anywhere on the full map to drop a custom destination; the route is
   drawn to it on the overview, HUD minimap and phone map. Use **Clear** in the
   overview to remove it.
 - Full-map **teleport panel** for quick travel to Metro City, Riverside,
-  Northgate, Southport, Highland, Suncoast, the A1 East Link, Genting Pass and
-  Batang Pass. You can also click anywhere on the map to set a custom point and
-  use **Teleport here** to jump directly to that location. Teleporting clears
+  Northgate, Southport, Highland, Suncoast, Costa Beach, Downtown Costa, East
+  Costa, South Beach, Southside, Costa Airport, the A1 East Link, Genting Pass
+  and Batang Pass. You can also click anywhere on the map to set a custom point
+  and use **Teleport here** to jump directly to that location. Teleporting clears
   speed and places the car on the selected road or terrain.
 - Dispatch rides are world-space landmarks across every town. Pickups rotate through every city and drop-offs are placed in a
   different city, so the job board keeps the whole map in use. Accept a fare, follow the route to the pickup, stop below 6 km/h

@@ -267,7 +267,7 @@
   z-index: 30;
   display: grid;
   place-items: center;
-  padding: 22px;
+  padding: 22px 22px 138px;
   background: rgba(3, 8, 13, 0.97);
   backdrop-filter: blur(10px);
 }
@@ -626,7 +626,7 @@
 .teleport-panel {
   position: absolute;
   left: 50%;
-  bottom: 54px;
+  bottom: 20px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -672,8 +672,11 @@
 }
 
 @media (max-width: 620px) {
+  .overview-map {
+    padding: 14px 14px 160px;
+  }
   .teleport-panel {
-    bottom: 46px;
+    bottom: 18px;
     gap: 5px;
     padding: 6px;
   }

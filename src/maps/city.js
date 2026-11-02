@@ -2,9 +2,11 @@
  * Deterministic open-world layout.
  *
  * Metro City is the main 14 x 14-block grid. An A1 autobahn runs north-south to
- * the east, a river separates the towns, and an east link connects the whole
- * network. A real-world Genting Highlands road and elevation profile is
- * converted into a drivable mountain pass north of the city.
+ * the east, a river separates the satellite towns, and an east link connects the
+ * whole network. South of the original city, Costa Vista adds six connected
+ * coastal districts, a freeway, a beach and a downtown skyline. A real-world
+ * Genting Highlands road and elevation profile is converted into a drivable
+ * mountain pass north of the city.
  *
  * Pure data + maths, shared by the renderer, physics, dispatch and maps.
  *
@@ -46,7 +48,7 @@ export const MAJOR_ROADS = Object.freeze(
   new Set(ROAD_LINES.filter((_, index) => MAJOR_INDICES.has(index))),
 )
 
-function makeTown({ id, name, xLines, zLines, roadHalf, mainRoadHalf, mainZ }) {
+function makeTown({ id, name, xLines, zLines, roadHalf, mainRoadHalf, mainZ, majorLines, parkedCars }) {
   return Object.freeze({
     id,
     name,
@@ -55,6 +57,8 @@ function makeTown({ id, name, xLines, zLines, roadHalf, mainRoadHalf, mainZ }) {
     roadHalf,
     mainRoadHalf,
     mainZ,
+    majorLines: majorLines ?? null,
+    parkedCars: parkedCars ?? 45,
     bounds: Object.freeze({
       minX: xLines[0] - BLOCK_SIZE / 2,
       maxX: xLines[xLines.length - 1] + BLOCK_SIZE / 2,
@@ -63,6 +67,38 @@ function makeTown({ id, name, xLines, zLines, roadHalf, mainRoadHalf, mainZ }) {
     }),
   })
 }
+
+const makeLines = (min, max) =>
+  Array.from(
+    { length: Math.round((max - min) / BLOCK_SIZE) + 1 },
+    (_, index) => min + index * BLOCK_SIZE,
+  )
+
+/**
+ * A large GTA-inspired coastal town. Every fifth avenue is widened, and the
+ * main avenue is widened again so the grid has a readable hierarchy.
+ */
+function makeCostaTown({ id, name, xMin, xMax, zMin, zMax, mainZ, parkedCars = 150 }) {
+  const xLines = makeLines(xMin, xMax)
+  const zLines = makeLines(zMin, zMax)
+  const majorLines = new Set([
+    ...xLines.filter((_, index) => index % 5 === 0),
+    ...zLines.filter((_, index) => index % 5 === 0),
+    mainZ,
+  ])
+  return makeTown({
+    id,
+    name,
+    xLines,
+    zLines,
+    roadHalf: 9,
+    mainRoadHalf: 15,
+    mainZ,
+    majorLines,
+    parkedCars,
+  })
+}
+
 
 export const RIVERSIDE = makeTown({
   id: 'riverside',
@@ -109,12 +145,96 @@ export const SUNCOAST = makeTown({
   mainRoadHalf: 12,
   mainZ: 0,
 })
+
+/*
+ * Costa Vista — a large GTA-inspired coastal metropolis south of Metro City.
+ * Six adjacent districts share one continuous street grid, split by a wide
+ * east-west freeway and the extended A1. West of the grid is a beach and ocean.
+ */
+const COSTA_NORTH_Z = 1800
+const COSTA_NORTH_END_Z = 4200
+const COSTA_SOUTH_START_Z = 4320
+const COSTA_SOUTH_END_Z = 6000
+const COSTA_MAIN_NORTH_Z = 3000
+const COSTA_MAIN_SOUTH_Z = 4800
+
+export const COSTA_BEACH = makeCostaTown({
+  id: 'costa-beach',
+  name: 'Costa Beach',
+  xMin: -3600,
+  xMax: -1200,
+  zMin: COSTA_NORTH_Z,
+  zMax: COSTA_NORTH_END_Z,
+  mainZ: COSTA_MAIN_NORTH_Z,
+  parkedCars: 360,
+})
+export const COSTA_DOWNTOWN = makeCostaTown({
+  id: 'costa-downtown',
+  name: 'Downtown Costa',
+  xMin: -1200,
+  xMax: 1080,
+  zMin: COSTA_NORTH_Z,
+  zMax: COSTA_NORTH_END_Z,
+  mainZ: COSTA_MAIN_NORTH_Z,
+  parkedCars: 720,
+})
+export const COSTA_EAST = makeCostaTown({
+  id: 'costa-east',
+  name: 'East Costa',
+  xMin: 1200,
+  xMax: 3600,
+  zMin: COSTA_NORTH_Z,
+  zMax: COSTA_NORTH_END_Z,
+  mainZ: COSTA_MAIN_NORTH_Z,
+  parkedCars: 620,
+})
+export const COSTA_SOUTH_BEACH = makeCostaTown({
+  id: 'costa-south-beach',
+  name: 'South Beach',
+  xMin: -3600,
+  xMax: -1200,
+  zMin: COSTA_SOUTH_START_Z,
+  zMax: COSTA_SOUTH_END_Z,
+  mainZ: COSTA_MAIN_SOUTH_Z,
+  parkedCars: 360,
+})
+export const COSTA_SOUTHSIDE = makeCostaTown({
+  id: 'costa-southside',
+  name: 'Southside',
+  xMin: -1200,
+  xMax: 1080,
+  zMin: COSTA_SOUTH_START_Z,
+  zMax: COSTA_SOUTH_END_Z,
+  mainZ: COSTA_MAIN_SOUTH_Z,
+  parkedCars: 620,
+})
+export const COSTA_AIRPORT = makeCostaTown({
+  id: 'costa-airport',
+  name: 'Costa Airport',
+  xMin: 1200,
+  xMax: 3600,
+  zMin: COSTA_SOUTH_START_Z,
+  zMax: COSTA_SOUTH_END_Z,
+  mainZ: COSTA_MAIN_SOUTH_Z,
+  parkedCars: 360,
+})
+
+export const COSTA_TOWNS = Object.freeze([
+  COSTA_BEACH,
+  COSTA_DOWNTOWN,
+  COSTA_EAST,
+  COSTA_SOUTH_BEACH,
+  COSTA_SOUTHSIDE,
+  COSTA_AIRPORT,
+])
+
 export const TOWNS = Object.freeze([
   RIVERSIDE,
   NORTHGATE,
   SOUTHPORT,
   HIGHLAND,
   SUNCOAST,
+  ...COSTA_TOWNS,
 ])
 export const TOWN_BY_ID = new Map(TOWNS.map((town) => [town.id, town]))
 
@@ -150,7 +270,7 @@ export const AUTOBAHN = Object.freeze({
   x: 1120,
   halfWidth: 22,
   zMin: -1620,
-  zMax: 1620,
+  zMax: 6000,
 })
 export const CITY_LINKS = Object.freeze([
   Object.freeze({
@@ -179,6 +299,14 @@ export const CITY_LINKS = Object.freeze([
     xMin: AUTOBAHN.x,
     xMax: SOUTHPORT.bounds.maxX,
     bridge: true,
+  }),
+  Object.freeze({
+    id: 'costa-link',
+    name: 'Costa Freeway',
+    z: 4260,
+    halfWidth: 20,
+    xMin: -4000,
+    xMax: 4000,
   }),
 ])
 export const EAST_LINK = CITY_LINKS[0]
@@ -514,10 +642,16 @@ export const TELEPORT_POINTS = Object.freeze([
 ])
 
 export const WORLD_BOUNDS = Object.freeze({
-  minX: -4300,
+  minX: -4400,
   maxX: 4020,
   minZ: -4000,
-  maxZ: 1620,
+  maxZ: 6120,
+})
+
+/** Visual coastline south-west of the Costa Vista street grid. */
+export const COSTA_COAST = Object.freeze({
+  ocean: Object.freeze({ minX: -5200, maxX: -3900, minZ: 1400, maxZ: 6200 }),
+  beach: Object.freeze({ minX: -3900, maxX: -3620, minZ: 1400, maxZ: 6200 }),
 })
 
 /** Half width of a Metro City road centred on one of the ROAD_LINES values. */
@@ -527,6 +661,7 @@ export function roadHalfAt(line) {
 
 /** Half width of a road in one of the satellite towns. */
 export function townRoadHalfAt(town, line) {
+  if (town.majorLines?.has(line)) return town.mainRoadHalf
   return line === town.mainZ ? town.mainRoadHalf : town.roadHalf
 }
 
@@ -599,7 +734,7 @@ export const DISTRICTS = Object.freeze([
   {
     id: 'residential',
     name: 'Garden Suburbs',
-    palettes: ['brick', 'concrete'],
+    palettes: ['brick', 'concrete', 'stucco'],
     height: [7, 26],
     singleChance: 0.55,
     parkChance: 0.14,
@@ -649,12 +784,72 @@ export const DISTRICTS = Object.freeze([
   {
     id: 'suncoast',
     name: 'Suncoast',
-    palettes: ['glass', 'modern', 'brick'],
+    palettes: ['stucco', 'glass', 'modern', 'brick'],
     height: [14, 68],
     singleChance: 0.4,
     parkChance: 0.16,
     treeChance: 0.76,
     landmarks: ['Suncoast Marina', 'Palm Promenade', 'Bay Hotel', 'Lighthouse Point', 'Coral Market'],
+  },
+  {
+    id: 'costa-beach',
+    name: 'Costa Beach',
+    palettes: ['stucco', 'concrete', 'brick', 'modern'],
+    height: [8, 44],
+    singleChance: 0.5,
+    parkChance: 0.16,
+    treeChance: 0.8,
+    landmarks: ['Costa Pier', 'Palm Promenade', 'Beachfront Market', 'Surf Club', 'Marina Steps', 'Sunset Deck'],
+  },
+  {
+    id: 'costa-downtown',
+    name: 'Downtown Costa',
+    palettes: ['glass', 'modern', 'concrete'],
+    height: [38, 150],
+    singleChance: 0.18,
+    parkChance: 0.04,
+    treeChance: 0.32,
+    landmarks: ['Costa Central', 'Aurelia Tower', 'Civic Plaza', 'Grand Exchange', 'Union Station', 'Costa Opera House'],
+  },
+  {
+    id: 'costa-east',
+    name: 'East Costa',
+    palettes: ['modern', 'glass', 'concrete'],
+    height: [14, 68],
+    singleChance: 0.36,
+    parkChance: 0.09,
+    treeChance: 0.62,
+    landmarks: ['Eastside Mall', 'Costa University', 'Hillside Court', 'Observatory Gate', 'Tech Park'],
+  },
+  {
+    id: 'costa-south-beach',
+    name: 'South Beach',
+    palettes: ['stucco', 'brick', 'concrete', 'modern'],
+    height: [8, 34],
+    singleChance: 0.54,
+    parkChance: 0.17,
+    treeChance: 0.76,
+    landmarks: ['South Beach Boardwalk', 'Harbor Lights', 'Dune Park', 'Sailor Square', 'Salt Air Market'],
+  },
+  {
+    id: 'costa-southside',
+    name: 'Southside',
+    palettes: ['concrete', 'brick', 'modern'],
+    height: [10, 48],
+    singleChance: 0.46,
+    parkChance: 0.12,
+    treeChance: 0.55,
+    landmarks: ['Southside Depot', 'Rosewood Park', 'Costa Speedway', 'Warehouse Row', 'Garden Estates', 'Transit Yard'],
+  },
+  {
+    id: 'costa-airport',
+    name: 'Costa Airport',
+    palettes: ['concrete', 'modern'],
+    height: [8, 30],
+    singleChance: 0.62,
+    parkChance: 0.05,
+    treeChance: 0.28,
+    landmarks: ['Costa Airport', 'Cargo Terminal', 'Runway View', 'Jet Center', 'Logistics Park'],
   },
 ])
 
@@ -742,45 +937,238 @@ function shuffle(list, rng) {
   return copy
 }
 
-function addBuilding(list, x, z, width, depth, height, district, rng) {
+const BUILDING_TINTS = [
+  '#ffffff', '#f1e4d2', '#dfe9ee', '#f4e2c4', '#d3e0e6', '#e9d2b4', '#c9d3d9', '#e8d8cc',
+]
+const AWNING_COLORS = ['#b0443a', '#2f6b5f', '#3f5f8a', '#a3762f', '#6a4b72', '#c4a24a']
+
+function addBuilding(list, x, z, width, depth, height, district, rng, options = {}) {
   const palettes = district?.palettes ?? PALETTES
   const style = palettes[Math.floor(rng() * palettes.length)]
+  const districtId = district?.id ?? 'residential'
+  const kind = options.kind ?? (
+    height > 60 ? 'tower'
+      : (districtId === 'residential' || districtId.includes('beach')) && height < 14
+        ? 'house'
+        : districtId === 'industrial' || districtId.includes('airport')
+          ? 'warehouse'
+          : height < 16 ? 'shop' : 'midrise'
+  )
+  const isHouse = kind === 'house'
+  const isWarehouse = kind === 'warehouse'
+  const isTower = kind === 'tower'
+  const shape = isTower && height > 45 && rng() < 0.18 ? 'cylinder' : 'box'
   const tiers = []
   let roofX = x
   let roofZ = z
   let roofWidth = width
   let roofDepth = depth
 
-  // Tall towers get a wider podium and a slimmer shaft so the skyline is not a
-  // stack of identical extruded boxes.
-  if (height > 50 && rng() < 0.72) {
-    const podiumHeight = Math.max(10, Math.min(height * 0.3, 28))
+  if (isTower && height > 40) {
+    const podiumHeight = Math.max(8, Math.min(height * 0.24, 26))
     tiers.push({ x, z, width, depth, y: 0, height: podiumHeight })
-    const shaftWidth = width * (0.52 + rng() * 0.22)
-    const shaftDepth = depth * (0.52 + rng() * 0.22)
-    const offsetX = (rng() - 0.5) * Math.max(0, width - shaftWidth) * 0.4
-    const offsetZ = (rng() - 0.5) * Math.max(0, depth - shaftDepth) * 0.4
-    tiers.push({
-      x: x + offsetX,
-      z: z + offsetZ,
-      width: shaftWidth,
-      depth: shaftDepth,
-      y: podiumHeight,
-      height: height - podiumHeight,
-    })
-    roofX = x + offsetX
-    roofZ = z + offsetZ
-    roofWidth = shaftWidth
-    roofDepth = shaftDepth
+    const shaftHeight = height - podiumHeight
+    const shaftWidth = width * (0.6 + rng() * 0.2)
+    const shaftDepth = depth * (0.6 + rng() * 0.2)
+    const shaftX = x + (rng() - 0.5) * Math.max(0, width - shaftWidth) * 0.3
+    const shaftZ = z + (rng() - 0.5) * Math.max(0, depth - shaftDepth) * 0.3
+    if (shaftHeight > 60 && rng() < 0.65) {
+      const firstHeight = shaftHeight * (0.55 + rng() * 0.2)
+      tiers.push({
+        x: shaftX,
+        z: shaftZ,
+        width: shaftWidth,
+        depth: shaftDepth,
+        y: podiumHeight,
+        height: firstHeight,
+      })
+      const topWidth = shaftWidth * (0.72 + rng() * 0.16)
+      const topDepth = shaftDepth * (0.72 + rng() * 0.16)
+      const topX = shaftX + (rng() - 0.5) * Math.max(0, shaftWidth - topWidth) * 0.4
+      const topZ = shaftZ + (rng() - 0.5) * Math.max(0, shaftDepth - topDepth) * 0.4
+      tiers.push({
+        x: topX,
+        z: topZ,
+        width: topWidth,
+        depth: topDepth,
+        y: podiumHeight + firstHeight,
+        height: shaftHeight - firstHeight,
+      })
+      roofX = topX
+      roofZ = topZ
+      roofWidth = topWidth
+      roofDepth = topDepth
+    } else {
+      tiers.push({
+        x: shaftX,
+        z: shaftZ,
+        width: shaftWidth,
+        depth: shaftDepth,
+        y: podiumHeight,
+        height: shaftHeight,
+      })
+      roofX = shaftX
+      roofZ = shaftZ
+      roofWidth = shaftWidth
+      roofDepth = shaftDepth
+    }
+  } else if (isHouse || isWarehouse) {
+    tiers.push({ x, z, width, depth, y: 0, height })
   } else {
     tiers.push({ x, z, width, depth, y: 0, height })
+    if (height > 22 && rng() < 0.6) {
+      const cut = height * (0.16 + rng() * 0.22)
+      const upperWidth = width * (0.8 + rng() * 0.12)
+      const upperDepth = depth * (0.8 + rng() * 0.12)
+      const upperX = x + (rng() - 0.5) * Math.max(0, width - upperWidth) * 0.25
+      const upperZ = z + (rng() - 0.5) * Math.max(0, depth - upperDepth) * 0.25
+      tiers[0].height = height - cut
+      tiers.push({
+        x: upperX,
+        z: upperZ,
+        width: upperWidth,
+        depth: upperDepth,
+        y: height - cut,
+        height: cut,
+      })
+      roofX = upperX
+      roofZ = upperZ
+      roofWidth = upperWidth
+      roofDepth = upperDepth
+    }
+    // Attached lower wing gives wider blocks an L- or T-shaped mass instead of
+    // one flat extruded rectangle.
+    if (width > 28 && depth > 28 && rng() < 0.42) {
+      const wingWidth = width * (0.28 + rng() * 0.16)
+      const wingDepth = depth * (0.38 + rng() * 0.22)
+      tiers.push({
+        x: x + (rng() < 0.5 ? -1 : 1) * (width - wingWidth) / 2,
+        z: z + (rng() < 0.5 ? -1 : 1) * (depth - wingDepth) / 2,
+        width: wingWidth,
+        depth: wingDepth,
+        y: 0,
+        height: height * (0.38 + rng() * 0.28),
+      })
+    }
   }
 
-  const roofType = district?.id === 'residential' && height < 18
+  const roofType = isHouse
     ? 'gable'
-    : district?.id === 'industrial' && height < 18
+    : isWarehouse
       ? 'sawtooth'
-      : 'flat'
+      : (kind === 'shop' || kind === 'midrise') && height < 24 && rng() < 0.32
+        ? 'gable'
+        : 'flat'
+  const roofProps = []
+  if (!isHouse) {
+    const propCount = isWarehouse
+      ? 1 + Math.floor(rng() * 2)
+      : isTower ? 2 + Math.floor(rng() * 3) : 1 + Math.floor(rng() * 2)
+    for (let index = 0; index < propCount; index += 1) {
+      const type = isWarehouse ? 'hvac' : ['hvac', 'stair', 'tank'][Math.floor(rng() * 3)]
+      const propWidth = type === 'tank' ? 2 + rng() * 1.8 : 2.2 + rng() * 3.6
+      const propDepth = type === 'tank' ? propWidth : 2.2 + rng() * 3.6
+      roofProps.push({
+        type,
+        x: roofX + (rng() - 0.5) * Math.max(0, roofWidth - propWidth - 2),
+        z: roofZ + (rng() - 0.5) * Math.max(0, roofDepth - propDepth - 2),
+        y: height,
+        w: propWidth,
+        d: propDepth,
+        h: type === 'tank' ? 3 + rng() * 2.4 : 1.1 + rng() * 2.2,
+      })
+    }
+    if ((isTower && height > 80 && rng() < 0.55) || rng() < 0.05) {
+      roofProps.push({
+        type: 'antenna',
+        x: roofX + (rng() - 0.5) * roofWidth * 0.3,
+        z: roofZ + (rng() - 0.5) * roofDepth * 0.3,
+        y: height,
+        w: 0.16,
+        d: 0.16,
+        h: 5 + rng() * 10,
+      })
+    }
+    if (!isWarehouse && rng() < 0.055) {
+      roofProps.push({
+        type: 'billboard',
+        x: roofX,
+        z: roofZ + roofDepth * 0.32,
+        y: height,
+        w: Math.min(13, Math.max(6, roofWidth * 0.8)),
+        d: 0.4,
+        h: 5.5,
+      })
+    }
+    if (isTower && height > 110 && rng() < 0.5) {
+      roofProps.push({
+        type: 'spire',
+        x: roofX,
+        z: roofZ,
+        y: height,
+        w: Math.max(2.4, Math.min(6, roofWidth * 0.32)),
+        d: Math.max(2.4, Math.min(6, roofDepth * 0.32)),
+        h: 6 + rng() * 16,
+      })
+    }
+  } else if (rng() < 0.35) {
+    roofProps.push({
+      type: 'chimney',
+      x: x + (rng() - 0.5) * width * 0.4,
+      z: z + (rng() - 0.5) * depth * 0.4,
+      y: height,
+      w: 1.1,
+      d: 1.1,
+      h: 1.8,
+    })
+  }
+
+  const storefront = !isHouse && !isWarehouse && height < 48 &&
+    (kind === 'shop' || rng() < (districtId.includes('downtown') ? 0.42 : 0.62))
+  const storefrontHeight = 3.6 + rng() * 1.1
+  const awnings = []
+  if (storefront) {
+    const color = AWNING_COLORS[Math.floor(rng() * AWNING_COLORS.length)]
+    awnings.push({
+      x,
+      z: z + depth / 2 + 1.1,
+      y: storefrontHeight + 0.15,
+      w: width * (0.58 + rng() * 0.3),
+      h: 0.16,
+      d: 2.2,
+      color,
+    })
+    if (rng() < 0.45) {
+      awnings.push({
+        x: x - width / 2 - 1.1,
+        z,
+        y: storefrontHeight + 0.15,
+        w: 2.2,
+        h: 0.16,
+        d: depth * (0.5 + rng() * 0.3),
+        color,
+      })
+    }
+  }
+
+  const balconies = []
+  const balconyDistrict = districtId === 'residential' || districtId === 'suncoast' ||
+    districtId.includes('beach')
+  if (!isHouse && !isWarehouse && balconyDistrict && height > 12) {
+    const floors = Math.min(5, Math.floor((height - 4) / 3.4))
+    for (let floor = 1; floor <= floors; floor += 1) {
+      if (rng() < 0.72) {
+        balconies.push({
+          x: x + width / 2 + 0.65,
+          z,
+          y: 3.4 * floor,
+          w: 1.35,
+          h: 0.18,
+          d: depth * (0.58 + rng() * 0.26),
+        })
+      }
+    }
+  }
 
   list.push({
     x,
@@ -789,15 +1177,23 @@ function addBuilding(list, x, z, width, depth, height, district, rng) {
     depth,
     height,
     style,
+    kind,
+    shape,
     roof: ROOF_COLORS[Math.floor(rng() * ROOF_COLORS.length)],
-    district: district?.id ?? 'residential',
+    district: districtId,
     seed: Math.floor(rng() * 4096),
+    tint: BUILDING_TINTS[Math.floor(rng() * BUILDING_TINTS.length)],
     tiers,
     roofType,
     roofX,
     roofZ,
     roofWidth,
     roofDepth,
+    storefront,
+    storefrontHeight,
+    awnings,
+    balconies,
+    roofProps,
   })
 }
 
@@ -819,6 +1215,10 @@ function buildBlockSet(centers, resolveDistrict, seedBase, parkKeys) {
   const parks = []
   const plazas = []
   const trees = []
+  const streetTrees = []
+  const streetProps = []
+  const maxBx = centers.reduce((max, center) => Math.max(max, center.bx), 0)
+  const maxBz = centers.reduce((max, center) => Math.max(max, center.bz), 0)
 
   centers.forEach((center) => {
     const { x: centerX, z: centerZ, bx, bz } = center
@@ -853,35 +1253,119 @@ function buildBlockSet(centers, resolveDistrict, seedBase, parkKeys) {
 
     const single = rng() < district.singleChance
     const [low, high] = district.height
-    const ring = bx < GRID_BLOCKS ? Math.max(
-      Math.abs(bx - (GRID_BLOCKS - 1) / 2),
-      Math.abs(bz - (GRID_BLOCKS - 1) / 2),
-    ) : 0
-    const skylineBoost = district.id === 'riverside' ? 0 : Math.max(0, 1 - ring / 7) * 26
+    const isCosta = district.id.startsWith('costa-')
+    const ring = isCosta
+      ? Math.max(Math.abs(bx - maxBx / 2), Math.abs(bz - maxBz / 2))
+      : bx < GRID_BLOCKS ? Math.max(
+        Math.abs(bx - (GRID_BLOCKS - 1) / 2),
+        Math.abs(bz - (GRID_BLOCKS - 1) / 2),
+      ) : 0
+    const skylineBoost = district.id === 'riverside' ||
+      district.id === 'costa-beach' ||
+      district.id === 'costa-south-beach' ||
+      district.id === 'costa-airport'
+      ? 0
+      : district.id === 'costa-downtown'
+        ? Math.max(0, 1 - ring / 7) * 95
+        : Math.max(0, 1 - ring / 7) * 26
 
-    const push = (width, depth, x, z) => {
-      const height = low + rng() * (high - low) + skylineBoost * rng()
-      addBuilding(buildings, x, z, width, depth, height, district, rng)
+    const push = (width, depth, x, z, kind, fixedHeight) => {
+      const height = fixedHeight ?? (low + rng() * (high - low) + skylineBoost * rng())
+      addBuilding(buildings, x, z, width, depth, height, district, rng, { kind })
     }
 
-    if (single) {
-      push(42 + rng() * 16, 42 + rng() * 16, centerX, centerZ)
-    } else {
-      for (const px of [-20, 20]) {
-        for (const pz of [-20, 20]) {
-          if (rng() < (1 - district.treeChance) * 0.22) {
-            const treeX = centerX + px + (rng() - 0.5) * 8
-            const treeZ = centerZ + pz + (rng() - 0.5) * 8
+    const districtId = district.id
+    const isHouseBlock = districtId === 'residential' || districtId === 'oldtown'
+    const isWarehouseBlock = districtId === 'industrial' || districtId.includes('airport')
+    const isBeachBlock = districtId.includes('beach') || districtId === 'suncoast'
+    const isTowerBlock = districtId === 'downtown' || districtId === 'midtown' ||
+      districtId === 'costa-downtown'
+    const towerKind = high > 60 ? 'tower' : undefined
+
+    if (isHouseBlock) {
+      // Detached houses with front and back yards instead of four large boxes.
+      for (const row of [-1, 1]) {
+        for (const col of [-1, 0, 1]) {
+          if (rng() < 0.12) {
+            const treeX = centerX + col * 28 + (rng() - 0.5) * 8
+            const treeZ = centerZ + row * 21 + (rng() - 0.5) * 8
             if (!nearAnyRoad(treeX, treeZ)) addTree(trees, treeX, treeZ, rng)
             continue
           }
           push(
-            21 + rng() * 12,
-            21 + rng() * 12,
-            centerX + px + (rng() - 0.5) * 2.6,
-            centerZ + pz + (rng() - 0.5) * 2.6,
+            18 + rng() * 7,
+            16 + rng() * 7,
+            centerX + col * 28 + (rng() - 0.5) * 3,
+            centerZ + row * 21 + (rng() - 0.5) * 3,
+            'house',
+            6 + rng() * 7,
           )
         }
+      }
+    } else if (isWarehouseBlock) {
+      // Wide low warehouses with a service yard between them.
+      for (const row of [-1, 1]) {
+        push(
+          58 + rng() * 20,
+          24 + rng() * 10,
+          centerX + (rng() - 0.5) * 4,
+          centerZ + row * 22,
+          'warehouse',
+          7 + rng() * 9,
+        )
+      }
+    } else if (single || isTowerBlock) {
+      if (rng() < 0.58) {
+        push(48 + rng() * 18, 48 + rng() * 18, centerX, centerZ, towerKind)
+      } else {
+        for (const row of [-1, 1]) {
+          push(
+            32 + rng() * 10,
+            32 + rng() * 10,
+            centerX,
+            centerZ + row * 22,
+            towerKind,
+          )
+        }
+      }
+    } else {
+      // Mixed-use perimeter rows: a continuous street wall of narrow shops and
+      // apartments with a quieter inner courtyard building.
+      const shopColumns = isBeachBlock ? 3 : 2
+      const segment = (LOT_HALF * 2) / (shopColumns + 1)
+      for (const row of [-1, 1]) {
+        for (let col = 0; col < shopColumns; col += 1) {
+          if (rng() < 0.12) continue
+          const shopWidth = segment * (0.56 + rng() * 0.3)
+          const shopDepth = 16 + rng() * 10
+          const setback = rng() * 4.5
+          push(
+            shopWidth,
+            shopDepth,
+            centerX - LOT_HALF + segment * (col + 1) + (rng() - 0.5) * 2,
+            centerZ + row * (LOT_HALF - shopDepth / 2 - 1 - setback) + (rng() - 0.5) * 2,
+            'shop',
+            (isBeachBlock ? 9 : 8) + rng() * 21,
+          )
+        }
+      }
+      if (rng() < 0.78) {
+        push(
+          22 + rng() * 10,
+          18 + rng() * 7,
+          centerX + (rng() - 0.5) * 8,
+          centerZ + (rng() - 0.5) * 8,
+        )
+      }
+      if (rng() < 0.35) {
+        push(
+          22 + rng() * 8,
+          26 + rng() * 8,
+          centerX + LOT_HALF - 14,
+          centerZ,
+          'shop',
+          9 + rng() * 14,
+        )
       }
     }
 
@@ -893,9 +1377,48 @@ function buildBlockSet(centers, resolveDistrict, seedBase, parkKeys) {
       const treeZ = centerZ + (side === 2 ? along : side === 3 ? offset : -offset)
       if (!nearAnyRoad(treeX, treeZ)) addTree(trees, treeX, treeZ, rng, 0.55, 0.4)
     }
+
+    // Street trees and small furniture make the sidewalk edge read as a real
+    // street rather than a gap between extruded boxes.
+    const sidewalkOffset = LOT_HALF + 2.4
+    for (const side of [-1, 1]) {
+      const along = (rng() - 0.5) * (LOT_HALF * 1.1)
+      if (rng() < district.treeChance * 0.8) {
+        streetTrees.push({
+          x: centerX + along,
+          z: centerZ + side * sidewalkOffset,
+          scale: 0.5 + rng() * 0.35,
+          round: rng() < 0.62,
+        })
+      }
+      if (rng() < 0.32) {
+        streetProps.push({
+          type: ['bench', 'bin', 'hydrant', 'meter'][Math.floor(rng() * 4)],
+          x: centerX + (side === 1 ? -along : along),
+          z: centerZ + side * (sidewalkOffset - 0.5),
+          ry: side > 0 ? Math.PI : 0,
+        })
+      }
+      if (rng() < district.treeChance * 0.7) {
+        streetTrees.push({
+          x: centerX + side * sidewalkOffset,
+          z: centerZ + along,
+          scale: 0.5 + rng() * 0.35,
+          round: rng() < 0.62,
+        })
+      }
+      if (rng() < 0.26) {
+        streetProps.push({
+          type: ['bench', 'bin', 'hydrant', 'meter'][Math.floor(rng() * 4)],
+          x: centerX + side * (sidewalkOffset - 0.5),
+          z: centerZ + (side === 1 ? -along : along),
+          ry: side > 0 ? Math.PI / 2 : -Math.PI / 2,
+        })
+      }
+    }
   })
 
-  return { buildings, parks, plazas, trees }
+  return { buildings, parks, plazas, trees, streetTrees, streetProps }
 }
 
 const metroGenerated = buildBlockSet(METRO_BLOCK_CENTERS, blockDistrict, 9001, LANDMARK_PARKS)
@@ -905,6 +1428,12 @@ const TOWN_PARK_KEYS = {
   southport: new Set(['3,2', '1,4']),
   highland: new Set(['1,2', '3,3']),
   suncoast: new Set(['2,3', '4,1']),
+  'costa-beach': new Set(['3,14', '7,16', '12,10', '16,4']),
+  'costa-downtown': new Set(['9,9', '10,10', '5,14', '14,5']),
+  'costa-east': new Set(['6,7', '12,12', '18,3']),
+  'costa-south-beach': new Set(['4,4', '10,2', '15,7']),
+  'costa-southside': new Set(['6,3', '12,5']),
+  'costa-airport': new Set(['8,4', '16,2']),
 }
 const TOWN_GENERATED = TOWNS.map((town, index) => buildBlockSet(
   townBlockCenters(town),
@@ -931,6 +1460,19 @@ const ruralGenerated = (() => {
   return trees
 })()
 
+// Palms and scrub along the Costa Vista beach.
+const coastGenerated = (() => {
+  const trees = []
+  const rng = mulberry32(91_117)
+  const { beach } = COSTA_COAST
+  for (let i = 0; i < 170; i += 1) {
+    const x = beach.minX + 30 + rng() * (beach.maxX - beach.minX - 60)
+    const z = beach.minZ + 60 + rng() * (beach.maxZ - beach.minZ - 120)
+    addTree(trees, x, z, rng, 0.85, 0.8)
+  }
+  return trees
+})()
+
 export const BUILDINGS = [
   ...metroGenerated.buildings,
   ...TOWN_GENERATED.flatMap((generated) => generated.buildings),
@@ -946,7 +1488,15 @@ export const PLAZAS = [
 export const TREES = [
   ...metroGenerated.trees,
   ...TOWN_GENERATED.flatMap((generated) => generated.trees),
+  ...metroGenerated.streetTrees,
+  ...TOWN_GENERATED.flatMap((generated) => generated.streetTrees),
   ...ruralGenerated,
+  ...coastGenerated,
+]
+
+export const STREET_PROPS = [
+  ...metroGenerated.streetProps,
+  ...TOWN_GENERATED.flatMap((generated) => generated.streetProps),
 ]
 
 /**
@@ -966,6 +1516,13 @@ export const DISTRICT_LABELS = Object.freeze([
   { id: 'southport', name: 'Southport', x: 1920, z: 1200 },
   { id: 'highland', name: 'Highland', x: 2820, z: 0 },
   { id: 'suncoast', name: 'Suncoast', x: 3660, z: 0 },
+  { id: 'costa-beach', name: 'Costa Beach', x: -2400, z: 3000 },
+  { id: 'costa-downtown', name: 'Downtown Costa', x: -60, z: 3000 },
+  { id: 'costa-east', name: 'East Costa', x: 2400, z: 3000 },
+  { id: 'costa-south-beach', name: 'South Beach', x: -2400, z: 4860 },
+  { id: 'costa-southside', name: 'Southside', x: -60, z: 4860 },
+  { id: 'costa-airport', name: 'Costa Airport', x: 2400, z: 4860 },
+  { id: 'costa-link', name: 'Costa Freeway', x: 0, z: 4260 },
   { id: 'autobahn', name: 'A1 Autobahn', x: AUTOBAHN.x, z: -1320 },
   { id: 'eastlink', name: 'A1 East Link', x: 1200, z: 45 },
   { id: 'genting', name: 'Genting Pass', x: 420, z: -3750 },
@@ -1049,7 +1606,7 @@ export const PARKED_CARS = [
       xCenters,
       zLines: town.zLines,
       zCenters,
-      count: 45,
+      count: town.parkedCars ?? 45,
       seed: 818181 + index * 9_999,
       halfFor: (line) => townRoadHalfAt(town, line),
       within: (x, z) => {
@@ -1533,6 +2090,12 @@ export function resolveCollision(x, z, radius) {
     hit = { x, z: WORLD_BOUNDS.maxZ - radius, nx: 0, nz: -1 }
   } else if (z < WORLD_BOUNDS.minZ + radius) {
     hit = { x, z: WORLD_BOUNDS.minZ + radius, nx: 0, nz: 1 }
+  }
+
+  // Keep the car on the beach instead of driving out over the sea.
+  const { ocean } = COSTA_COAST
+  if (z > ocean.minZ && z < ocean.maxZ && x < ocean.maxX + radius) {
+    hit = { x: ocean.maxX + radius, z, nx: 1, nz: 0 }
   }
 
   return hit

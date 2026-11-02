@@ -1,23 +1,28 @@
 import { useEffect, useRef } from 'react'
 import {
+  ALL_BLOCK_CENTERS,
   AUTOBAHN,
   BUILDINGS,
   CITY_LIMIT,
   CITY_LINKS,
+  COSTA_COAST,
   DISTRICT_LABELS,
   FIELDS,
   GENTING,
   GENTING_ACCESSES,
   GENTING_ROUTES,
+  LOT_HALF,
   PARKS,
   PARKED_CARS,
   PLAZAS,
   RIVER,
   ROAD_LINES,
+  SIDEWALK,
   TOWNS,
   WORLD_BOUNDS,
   cityLabelAt,
   distanceBetween,
+  districtAt,
   roadHalfAt,
   streetRoute,
   townRoadHalfAt,
@@ -155,6 +160,13 @@ function drawMap(canvas, { telemetry, ticket, status, variant, destination }) {
     worldWidth,
     worldHeight,
   )
+
+  // Costa Vista coastline.
+  const { ocean, beach } = COSTA_COAST
+  context.fillStyle = '#0b3446'
+  context.fillRect(ocean.minX, ocean.minZ, ocean.maxX - ocean.minX, ocean.maxZ - ocean.minZ)
+  context.fillStyle = '#6f6248'
+  context.fillRect(beach.minX, beach.minZ, beach.maxX - beach.minX, beach.maxZ - beach.minZ)
 
   // Fields and open land.
   for (const field of FIELDS) {
@@ -298,18 +310,64 @@ function drawMap(canvas, { telemetry, ticket, status, variant, destination }) {
   context.lineTo(AUTOBAHN.x, AUTOBAHN.zMax)
   context.stroke()
 
-  // Buildings, brighter the taller they are. Cull far blocks in close-up views.
+  // In the full-world view, solid block fills read like a city map instead of
+  // thousands of tiny building dots. Close-up views keep the real footprints.
   const viewRange = variant === 'overview' ? Infinity : Math.hypot(width, height) / scale
-  for (const building of BUILDINGS) {
-    if (Math.abs(building.x - viewX) > viewRange || Math.abs(building.z - viewZ) > viewRange) continue
-    const lift = Math.min(1, building.height / 130)
-    context.fillStyle = `rgba(${92 + lift * 52}, ${106 + lift * 48}, ${126 + lift * 42}, 0.85)`
-    context.fillRect(
-      building.x - building.width / 2,
-      building.z - building.depth / 2,
-      building.width,
-      building.depth,
-    )
+  if (variant === 'overview') {
+    const blockColors = {
+      downtown: '#2b3744',
+      'costa-downtown': '#293543',
+      midtown: '#2b3239',
+      'costa-east': '#303840',
+      residential: '#26362f',
+      'costa-southside': '#2d3830',
+      oldtown: '#382f29',
+      industrial: '#302f2c',
+      'costa-airport': '#2d3236',
+      harbor: '#2f3336',
+      university: '#2b3533',
+      riverside: '#2c3733',
+      northgate: '#2d343a',
+      southport: '#313633',
+      highland: '#30373c',
+      suncoast: '#343730',
+      'costa-beach': '#3a3731',
+      'costa-south-beach': '#38362f',
+    }
+    const blockSize = (LOT_HALF + SIDEWALK) * 2
+    for (const block of ALL_BLOCK_CENTERS) {
+      const district = districtAt(block.x, block.z)
+      context.fillStyle = blockColors[district.id] ?? '#2b3733'
+      context.fillRect(
+        block.x - blockSize / 2,
+        block.z - blockSize / 2,
+        blockSize,
+        blockSize,
+      )
+    }
+    for (const building of BUILDINGS) {
+      if (building.height < 55) continue
+      const lift = Math.min(1, building.height / 140)
+      context.fillStyle = `rgba(${130 + lift * 46}, ${148 + lift * 42}, ${166 + lift * 36}, 0.9)`
+      context.fillRect(
+        building.x - building.width / 2,
+        building.z - building.depth / 2,
+        building.width,
+        building.depth,
+      )
+    }
+  } else {
+    for (const building of BUILDINGS) {
+      if (Math.abs(building.x - viewX) > viewRange || Math.abs(building.z - viewZ) > viewRange) continue
+      const lift = Math.min(1, building.height / 130)
+      context.fillStyle = `rgba(${92 + lift * 52}, ${106 + lift * 48}, ${126 + lift * 42}, 0.85)`
+      context.fillRect(
+        building.x - building.width / 2,
+        building.z - building.depth / 2,
+        building.width,
+        building.depth,
+      )
+    }
   }
 
   if (scale > 0.2) {
@@ -389,10 +447,25 @@ function drawMap(canvas, { telemetry, ticket, status, variant, destination }) {
     context.lineWidth = 3
     context.strokeStyle = 'rgba(3, 10, 14, 0.9)'
     context.fillStyle = 'rgba(196, 224, 226, 0.88)'
+    const placedLabels = []
     for (const area of DISTRICT_LABELS) {
       const point = project(area.x, area.z)
-      context.strokeText(area.name.toUpperCase(), point.x, point.y)
-      context.fillText(area.name.toUpperCase(), point.x, point.y)
+      const text = area.name.toUpperCase()
+      const textWidth = context.measureText(text).width
+      const labelX = Math.min(width - textWidth / 2 - 8, Math.max(textWidth / 2 + 8, point.x))
+      const labelY = Math.min(height - 22, Math.max(16, point.y))
+      const box = {
+        x: labelX - textWidth / 2 - 4,
+        y: labelY - 9,
+        w: textWidth + 8,
+        h: 18,
+      }
+      if (placedLabels.some((other) =>
+        box.x < other.x + other.w && box.x + box.w > other.x &&
+        box.y < other.y + other.h && box.y + box.h > other.y)) continue
+      placedLabels.push(box)
+      context.strokeText(text, labelX, labelY)
+      context.fillText(text, labelX, labelY)
     }
   }
 

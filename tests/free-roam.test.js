@@ -7,6 +7,7 @@ import {
   BUILDINGS,
   CITY_LIMIT,
   CITY_STOPS,
+  COSTA_TOWNS,
   DISTRICTS,
   EAST_LINK,
   GENTING,
@@ -22,8 +23,10 @@ import {
   ROAD_LINES,
   SOUTHPORT,
   SPAWN,
+  STREET_PROPS,
   SUNCOAST,
   TELEPORT_POINTS,
+  TREES,
   WORLD_BOUNDS,
   cityLabelAt,
   isOnRoad,
@@ -75,6 +78,26 @@ test('city layout exposes a large deterministic road grid with districts and sto
     assert.ok(stop.z >= WORLD_BOUNDS.minZ && stop.z <= WORLD_BOUNDS.maxZ, stop.name)
     assert.equal(isOnRoad(stop.x, stop.z), true, `${stop.name} should sit on a street`)
   }
+})
+
+test('city buildings and streets have varied massing and detail', () => {
+  const kinds = new Set(BUILDINGS.map((building) => building.kind))
+  for (const kind of ['tower', 'midrise', 'shop', 'house', 'warehouse']) {
+    assert.ok(kinds.has(kind), `missing ${kind} buildings`)
+  }
+  assert.ok(BUILDINGS.some((building) => building.tiers.length > 1),
+    'some buildings should have setbacks or attached wings')
+  assert.ok(BUILDINGS.some((building) => building.storefront),
+    'commercial buildings should have storefront bands')
+  assert.ok(BUILDINGS.some((building) => (building.roofProps ?? []).length > 0),
+    'buildings should carry rooftop equipment')
+  assert.ok(BUILDINGS.some((building) => (building.awnings ?? []).length > 0),
+    'storefronts should have awnings')
+  assert.ok(BUILDINGS.some((building) => building.shape === 'cylinder'),
+    'downtown should include a few cylindrical towers')
+  assert.ok(STREET_PROPS.length > 0, 'sidewalks should carry street furniture')
+  assert.ok(TREES.length > 1000, 'the city should be lined with trees')
+  assert.ok(PARKED_CARS.length > 1000, 'the streets should have parked cars')
 })
 
 test('city collision resolution pushes out of buildings, river walls and the boundary', () => {
@@ -230,6 +253,25 @@ test('A1 exits connect every satellite town', () => {
   assert.ok(suncoast.some((point) => Math.abs(point.z) < 0.001 && point.x >= 3360))
 })
 
+
+test('Costa Vista forms a large, connected, drivable coastal district', () => {
+  assert.ok(COSTA_TOWNS.length >= 6)
+  for (const town of COSTA_TOWNS) {
+    const x = town.xLines[2]
+    const z = town.mainZ
+    assert.equal(isOnRoad(x, z), true, `${town.name} main junction should be drivable`)
+    assert.equal(townAt(x, z)?.id, town.id)
+    assert.equal(cityLabelAt(x, z), town.name)
+    assert.equal(surfaceHeightAt(x, z), 0)
+  }
+
+  assert.equal(isOnRoad(AUTOBAHN.x, 5000), true, 'A1 should reach Costa Vista')
+  assert.equal(isOnRoad(0, 4260), true, 'Costa Freeway should be drivable')
+
+  const route = streetRoute({ x: SPAWN.x, z: SPAWN.z }, { x: -60, z: 3000 })
+  assert.ok(route.some((point) => Math.abs(point.x - AUTOBAHN.x) < 0.001))
+  assert.ok(route.some((point) => Math.abs(point.z - 3000) < 0.001))
+})
 
 test('Genting pass has elevation, hairpins and drivable slopes', () => {
   assert.ok(GENTING.halfWidth >= 15, 'mountain road should be wide enough for traffic')
