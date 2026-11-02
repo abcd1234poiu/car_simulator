@@ -610,8 +610,9 @@ export class VehiclePhysics {
     const fuelLoad = clamp(this.throttle *
       (this.boost > 0 ? 0.8 + 0.2 * this.boost : 1), 0, 1)
     const revFactor = clamp(this.rpm / this.engine.redline, 0, 1)
-    const idleFlow = 0.35 + fuelDisplacement * 0.26
-    const fullFlow = fuelDisplacement * 28 + (forced ? 10 : 0)
+    const efficiency = this.engine.fuelEfficiency ?? 1
+    const idleFlow = (0.35 + fuelDisplacement * 0.26) * efficiency
+    const fullFlow = (fuelDisplacement * 28 + (forced ? 10 : 0)) * efficiency
     this.fuelRate = engineOn
       ? idleFlow + (fullFlow - idleFlow) * fuelLoad * (0.35 + 0.65 * revFactor)
       : 0

@@ -63,8 +63,9 @@ Use `npm run lint`, `npm test` and `npm run build` to validate changes.
   tyre and suspension selected. The fleet preview scrolls back to that car, so
   the 3D model and the configuration summary stay in sync.
 - Each car has a fuel tank shown on its card and a live fuel meter in the
-  dashboard. Consumption is calculated from engine displacement, RPM, throttle
-  and boost; the HUD shows the remaining litres, percentage, average L/100 km
+  dashboard. Consumption is calculated from engine displacement, RPM, throttle,
+  boost and engine-specific efficiency; the engine list shows an estimated
+  L/100 km, and the HUD shows the remaining litres, percentage, average L/100 km
   and estimated range. An empty tank cuts engine drive. Press **U** or use the
   **REFUEL** button to refill; resetting the run also refills the tank.
 - Car models include sloped glazing, window seals, windshield wipers, projector

@@ -77,3 +77,15 @@ export function performanceSummary(car, engine, transmission, aspiration) {
     gearCount: transmission.gearRatios.length,
   }
 }
+
+
+/** Approximate combined fuel use in L/100 km for the engine selection list. */
+export function estimatedFuelConsumption(engine) {
+  const displacement = engine.displacement ?? 2
+  const forced = ['turbo', 'twin-turbo', 'supercharger'].includes(engine.induction)
+  const efficiency = engine.fuelEfficiency ?? 1
+  const idle = (0.35 + displacement * 0.26) * efficiency
+  const full = (displacement * 28 + (forced ? 10 : 0)) * efficiency
+  // Reference: a light 25% load at 35% of redline, roughly 100 km/h.
+  return idle + (full - idle) * 0.25 * (0.35 + 0.65 * 0.35)
+}

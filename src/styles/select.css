@@ -568,6 +568,12 @@
   text-overflow: ellipsis;
 }
 
+.engine-fuel {
+  color: #7fae9f !important;
+  font-size: 8.5px !important;
+  letter-spacing: 0.03em !important;
+}
+
 .radio {
   margin-left: auto;
   width: 14px;
@@ -578,7 +584,13 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.engine-option.is-active .radio {
+.engine-option.is-active .engine-fuel {
+  color: #7fae9f !important;
+  font-size: 8.5px !important;
+  letter-spacing: 0.03em !important;
+}
+
+.radio {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 3px #0b111b, inset 0 0 0 8px var(--accent);
 }

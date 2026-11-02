@@ -16,7 +16,8 @@ export const ENGINES = {
     idleRpm: 850,
     redline: 6800,
     maxRpm: 7200,
-    character: 'Rev-happy turbo four with a crisp, metallic exhaust note.',
+        fuelEfficiency: 0.95,
+character: 'Rev-happy turbo four with a crisp, metallic exhaust note.',
     torqueCurve: [
       { rpm: 900, torque: 170 },
       { rpm: 1500, torque: 245 },
@@ -50,7 +51,8 @@ export const ENGINES = {
     idleRpm: 750,
     redline: 7500,
     maxRpm: 7900,
-    character: 'Smooth, balanced power delivery with a mellow wail up top.',
+        fuelEfficiency: 1.0,
+character: 'Smooth, balanced power delivery with a mellow wail up top.',
     torqueCurve: [
       { rpm: 800, torque: 255 },
       { rpm: 1600, torque: 350 },
@@ -84,7 +86,8 @@ export const ENGINES = {
     idleRpm: 650,
     redline: 7900,
     maxRpm: 8400,
-    character: 'Deep, angry burble that turns into a full-blooded roar.',
+        fuelEfficiency: 1.18,
+character: 'Deep, angry burble that turns into a full-blooded roar.',
     torqueCurve: [
       { rpm: 700, torque: 380 },
       { rpm: 1500, torque: 505 },
@@ -109,7 +112,8 @@ export const ENGINES = {
     id: 'twin-turbo-v6', name: '3.0L Twin-Turbo V6', shortName: 'Twin-Turbo V6',
     layout: 'V6', badge: 'TT V6', displacement: 3.0, induction: 'twin-turbo', cylinders: 6,
     idleRpm: 780, redline: 7100, maxRpm: 7500,
-    character: 'Two quick-spooling turbos deliver a broad, forceful midrange and a sharp hiss.',
+        fuelEfficiency: 0.92,
+character: 'Two quick-spooling turbos deliver a broad, forceful midrange and a sharp hiss.',
     torqueCurve: [
       { rpm: 800, torque: 230 }, { rpm: 1500, torque: 300 }, { rpm: 2500, torque: 430 },
       { rpm: 4000, torque: 465 }, { rpm: 5500, torque: 445 }, { rpm: 6800, torque: 355 },
@@ -121,7 +125,8 @@ export const ENGINES = {
     id: 's58-i6', name: '3.0L Twin-Turbo I6', shortName: 'TT I6',
     layout: 'Inline-6', badge: 'TT I6', displacement: 3.0, induction: 'twin-turbo', cylinders: 6,
     idleRpm: 800, redline: 7200, maxRpm: 7600,
-    character: 'A high-boost inline-six with a broad torque plateau and a hard top-end pull.',
+        fuelEfficiency: 1.0,
+character: 'A high-boost inline-six with a broad torque plateau and a hard top-end pull.',
     torqueCurve: [
       { rpm: 800, torque: 450 }, { rpm: 1800, torque: 550 }, { rpm: 2750, torque: 650 },
       { rpm: 4000, torque: 650 }, { rpm: 5500, torque: 640 }, { rpm: 6500, torque: 590 },
@@ -133,7 +138,8 @@ export const ENGINES = {
     id: 'supercharged-v8', name: '5.0L Supercharged V8', shortName: 'Supercharged V8',
     layout: 'V8', badge: 'SC V8', displacement: 5.0, induction: 'supercharger', cylinders: 8,
     idleRpm: 680, redline: 7600, maxRpm: 8000,
-    character: 'Instant blower response, a deep V8 pulse and a rising mechanical whine.',
+        fuelEfficiency: 1.12,
+character: 'Instant blower response, a deep V8 pulse and a rising mechanical whine.',
     torqueCurve: [
       { rpm: 700, torque: 420 }, { rpm: 1500, torque: 530 }, { rpm: 2600, torque: 610 },
       { rpm: 4200, torque: 650 }, { rpm: 5900, torque: 610 }, { rpm: 7200, torque: 510 },
@@ -145,7 +151,8 @@ export const ENGINES = {
     id: 'vtec-i4', name: '2.0L VTEC I4', shortName: 'VTEC I4',
     layout: 'Inline-4', badge: 'VTEC', displacement: 2.0, induction: 'vtec', cylinders: 4,
     idleRpm: 820, redline: 8500, maxRpm: 8900,
-    character: 'Naturally aspirated response with a pronounced high-cam surge above 5,500 rpm.',
+        fuelEfficiency: 0.85,
+character: 'Naturally aspirated response with a pronounced high-cam surge above 5,500 rpm.',
     torqueCurve: [
       { rpm: 850, torque: 120 }, { rpm: 2000, torque: 150 }, { rpm: 4000, torque: 185 },
       { rpm: 5400, torque: 190 }, { rpm: 5900, torque: 215 }, { rpm: 7200, torque: 230 },
@@ -157,7 +164,8 @@ export const ENGINES = {
     id: 'k20c1-i4', name: '2.0L Turbo I4 (K20C1)', shortName: 'K20C1',
     layout: 'Inline-4', badge: 'K20C1', displacement: 2.0, induction: 'turbo-vtec', cylinders: 4,
     idleRpm: 800, redline: 7000, maxRpm: 7200,
-    character: 'High-boost four-cylinder with a strong midrange and a hard pull to redline.',
+        fuelEfficiency: 0.9,
+character: 'High-boost four-cylinder with a strong midrange and a hard pull to redline.',
     torqueCurve: [
       { rpm: 800, torque: 250 }, { rpm: 1500, torque: 350 }, { rpm: 2500, torque: 420 },
       { rpm: 3500, torque: 420 }, { rpm: 5000, torque: 400 }, { rpm: 6000, torque: 360 },
@@ -169,7 +177,8 @@ export const ENGINES = {
     id: 'k3-ve-i4', name: '1.3L K3-VE I4', shortName: 'K3-VE',
     layout: 'Inline-4', badge: 'K3-VE', displacement: 1.3, induction: 'natural', cylinders: 4,
     idleRpm: 750, redline: 6000, maxRpm: 6500,
-    character: 'Compact naturally aspirated four tuned for easy city driving and low running costs.',
+        fuelEfficiency: 0.8,
+character: 'Compact naturally aspirated four tuned for easy city driving and low running costs.',
     torqueCurve: [
       { rpm: 800, torque: 90 }, { rpm: 2000, torque: 105 }, { rpm: 3200, torque: 116 },
       { rpm: 4500, torque: 110 }, { rpm: 5500, torque: 95 }, { rpm: 6000, torque: 80 },
@@ -181,7 +190,8 @@ export const ENGINES = {
     id: 'eco-i4', name: '1.8L Economy I4', shortName: 'Economy I4',
     layout: 'Inline-4', badge: 'ECO', displacement: 1.8, induction: 'natural', cylinders: 4,
     idleRpm: 700, redline: 6100, maxRpm: 6500,
-    character: 'Quiet, efficient and smooth, with gentle power rather than an aggressive exhaust.',
+        fuelEfficiency: 0.72,
+character: 'Quiet, efficient and smooth, with gentle power rather than an aggressive exhaust.',
     torqueCurve: [
       { rpm: 700, torque: 105 }, { rpm: 1500, torque: 140 }, { rpm: 2800, torque: 175 },
       { rpm: 4000, torque: 180 }, { rpm: 5200, torque: 165 }, { rpm: 6100, torque: 140 },

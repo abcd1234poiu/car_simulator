@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ASPIRATIONS, CARS, ENGINES, TRANSMISSIONS, TYRES } from '../src/constants/config.js'
 import { VehiclePhysics } from '../src/engine/physics.js'
-import { performanceSummary } from '../src/engine/specs.js'
+import { estimatedFuelConsumption, performanceSummary } from '../src/engine/specs.js'
 import { InputController } from '../src/engine/input.js'
 import { pedalLevelAt } from '../src/engine/pedals.js'
 
@@ -513,4 +513,21 @@ test('an empty tank cuts drive until the car is refuelled', () => {
   car.refuel()
   for (let i = 0; i < 120; i += 1) car.update(0.05, { throttle: 1 })
   assert.ok(car.snapshot().speed > 0)
+})
+
+
+test('engine efficiency changes fuel consumption', () => {
+  const run = (engineId) => {
+    const vehicle = create(engineId, 'automatic')
+    vehicle.selectRange('D')
+    for (let i = 0; i < 300; i += 1) vehicle.update(0.05, { throttle: 0.5 })
+    return vehicle.snapshot()
+  }
+  const eco = run('eco-i4')
+  const turbo = run('inline-4')
+  const v8 = run('v8')
+  assert.ok(eco.fuelUsed < turbo.fuelUsed)
+  assert.ok(v8.fuelUsed > turbo.fuelUsed)
+  assert.ok(estimatedFuelConsumption(ENGINES['eco-i4']) <
+    estimatedFuelConsumption(ENGINES.v8))
 })

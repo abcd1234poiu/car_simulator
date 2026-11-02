@@ -26,7 +26,7 @@ import {
   getTransmission,
   normalizeSuspension,
 } from '../constants/config.js'
-import { peakPowerHp, peakTorqueNm, performanceSummary } from '../engine/specs.js'
+import { estimatedFuelConsumption, peakPowerHp, peakTorqueNm, performanceSummary } from '../engine/specs.js'
 import { CarSilhouette } from '../components/CarSilhouette.jsx'
 import { CarPreview3D } from '../components/CarPreview3D.jsx'
 import '../styles/select.css'
@@ -298,6 +298,9 @@ export function SelectView({ audio, muted, onToggleMute, onStart, initialSelecti
                         {peakPowerHp(option, aspiration)} hp ·{' '}
                         {peakTorqueNm(option, aspiration)} Nm ·{' '}
                         {option.redline.toLocaleString('en-US')} rpm
+                      </small>
+                      <small className="engine-fuel">
+                        est. {estimatedFuelConsumption(option).toFixed(1)} L/100 km
                       </small>
                     </span>
                     <span className="radio" />
