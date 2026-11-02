@@ -8,6 +8,7 @@ function App() {
   const [audio] = useState(() => new EngineAudio())
   const [muted, setMuted] = useState(false)
   const [session, setSession] = useState(null)
+  const [selection, setSelection] = useState(null)
 
   const toggleMute = useCallback(() => {
     setMuted((previous) => {
@@ -20,6 +21,14 @@ function App() {
   const startDrive = useCallback(
     (car, engine, transmission, aspiration, tyre, suspension) => {
       audio.setMuted(muted)
+      setSelection({
+        carId: car.id,
+        engineId: engine.id,
+        transmissionId: transmission.id,
+        aspirationId: aspiration?.id,
+        tyreId: tyre?.id,
+        suspension: suspension ? { ...suspension } : undefined,
+      })
       setSession({ car, engine, transmission, aspiration, tyre, suspension })
     },
     [audio, muted],
@@ -48,6 +57,7 @@ function App() {
           muted={muted}
           onToggleMute={toggleMute}
           onStart={startDrive}
+          initialSelection={selection}
         />
       )}
     </div>

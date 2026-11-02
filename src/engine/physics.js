@@ -17,6 +17,7 @@ import {
 const ASPIRATION_INDUCTION = {
   na: 'natural',
   turbo: 'turbo',
+  'turbo-vtec': 'turbo',
   twin: 'twin-turbo',
   supercharger: 'supercharger',
   vtec: 'vtec',
@@ -117,6 +118,12 @@ export class VehiclePhysics {
     this.tyreWear = 0
     this.tyreSlip = 0
     this.effectiveGrip = this.baseGrip
+    this.fuelCapacity = this.car.fuelCapacity ?? 50
+    this.fuel = this.fuelCapacity
+    this.fuelUsed = 0
+    this.fuelRate = 0
+    this.averageConsumption = 0
+    this.fuelStarved = false
     this.directionShock = 0
     this.mechanicalShock = 0
     this.impact = 0
@@ -128,6 +135,12 @@ export class VehiclePhysics {
     this.pendingShiftEvent = null
     this.kickdownArmed = true
     this.sportDownshiftPending = false
+  }
+
+  refuel(liters = this.fuelCapacity) {
+    this.fuel = Math.min(this.fuelCapacity, Math.max(0, this.fuel + liters))
+    this.fuelStarved = this.fuel <= 0.0001
+    return this.fuel
   }
 
   setIgnition(on) {
@@ -327,7 +340,7 @@ export class VehiclePhysics {
 
   update(dt, controls = {}) {
     const step = clamp(dt, 0.001, MAX_STEP)
-    const engineOn = this.ignition !== false
+    const engineOn = this.ignition !== false && !this.fuelStarved
     const throttleTarget = engineOn ? clamp(controls.throttle ?? 0, 0, 1) : 0
     const brakeTarget = clamp(controls.brake ?? 0, 0, 1)
     const clutchTarget = this.transmission.type === 'manual' ? clamp(controls.clutch ?? 0, 0, 1) : 0
@@ -587,6 +600,28 @@ export class VehiclePhysics {
     )
 
     this.integrateMotion(step, driveForce, stoppingAcceleration, handbrake)
+
+    // Fuel flow is estimated from engine displacement, RPM and load. It is
+    // deliberately generous enough that a tank lasts a normal play session,
+    // while hard driving and high RPM still consume noticeably more.
+    const forced = induction === 'turbo' || induction === 'twin-turbo' ||
+      induction === 'supercharger'
+    const fuelDisplacement = this.engine.displacement ?? 2
+    const fuelLoad = clamp(this.throttle *
+      (this.boost > 0 ? 0.8 + 0.2 * this.boost : 1), 0, 1)
+    const revFactor = clamp(this.rpm / this.engine.redline, 0, 1)
+    const idleFlow = 0.35 + fuelDisplacement * 0.26
+    const fullFlow = fuelDisplacement * 28 + (forced ? 10 : 0)
+    this.fuelRate = engineOn
+      ? idleFlow + (fullFlow - idleFlow) * fuelLoad * (0.35 + 0.65 * revFactor)
+      : 0
+    const liters = this.fuelRate * step / 3600
+    this.fuel = Math.max(0, this.fuel - liters)
+    this.fuelUsed += liters
+    const km = this.odometer / 1000
+    this.averageConsumption = km > 0.05 ? (this.fuelUsed / km) * 100 : 0
+    this.fuelStarved = this.fuel <= 0.0001
+
     return this.snapshot()
   }
 
@@ -685,6 +720,15 @@ export class VehiclePhysics {
       tyreWear: this.tyreWear,
       tyreGrip: this.effectiveGrip,
       tyreSlip: this.tyreSlip,
+      fuel: this.fuel,
+      fuelCapacity: this.fuelCapacity,
+      fuelFraction: this.fuelCapacity > 0 ? this.fuel / this.fuelCapacity : 0,
+      fuelRate: this.fuelRate,
+      fuelConsumption: this.averageConsumption,
+      fuelStarved: this.fuelStarved,
+      fuelRangeKm: this.averageConsumption > 0.1
+        ? (this.fuel / this.averageConsumption) * 100 : null,
+      fuelUsed: this.fuelUsed,
       engineBraking: this.engineBraking,
       mechanicalShock: this.mechanicalShock,
       ignition: this.ignition !== false,

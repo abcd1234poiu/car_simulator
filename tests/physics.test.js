@@ -483,3 +483,34 @@ test('tyre compounds change grip and wear with sliding', () => {
   assert.ok(slick.snapshot().tyreWear > 0)
   assert.ok(slick.snapshot().tyreGrip < slick.baseGrip)
 })
+
+
+test('fuel tank starts full, drains when driving and can be refuelled', () => {
+  const car = create('inline-4', 'automatic')
+  const start = car.snapshot()
+  assert.ok(start.fuelCapacity > 0)
+  assert.equal(start.fuel, start.fuelCapacity)
+  car.selectRange('D')
+  for (let i = 0; i < 240; i += 1) car.update(0.05, { throttle: 0.6 })
+  const driven = car.snapshot()
+  assert.ok(driven.fuel < start.fuel)
+  assert.ok(driven.fuelConsumption > 0)
+  assert.ok(driven.fuelRangeKm >= 0)
+  car.refuel()
+  const refuelled = car.snapshot()
+  assert.equal(refuelled.fuel, start.fuelCapacity)
+  assert.equal(refuelled.fuelStarved, false)
+})
+
+test('an empty tank cuts drive until the car is refuelled', () => {
+  const car = create('inline-4', 'automatic')
+  car.selectRange('D')
+  car.fuel = 0
+  car.fuelStarved = true
+  for (let i = 0; i < 100; i += 1) car.update(0.05, { throttle: 1 })
+  assert.equal(car.snapshot().speed, 0)
+  assert.equal(car.snapshot().fuelStarved, true)
+  car.refuel()
+  for (let i = 0; i < 120; i += 1) car.update(0.05, { throttle: 1 })
+  assert.ok(car.snapshot().speed > 0)
+})

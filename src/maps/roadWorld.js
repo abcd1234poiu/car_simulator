@@ -53,8 +53,8 @@ export function terrainMeshHeightAt(x, z) {
 }
 
 export const WATERWAY = Object.freeze({ xMin: 3420, xMax: 3800, zMin: -820, zMax: 2280, level: -3 })
-const ROAD_WIDTH_SCALE = 0.76
-export const ROAD_SHOULDER_WIDTH = 2.5
+const ROAD_WIDTH_SCALE = 0.62
+export const ROAD_SHOULDER_WIDTH = 1.5
 export const BRIDGE = Object.freeze({ id: 'a7-bridge', name: 'A7 River Bridge', z: 1080,
   xMin: 3240, xMax: 3960, halfWidth: 20 * ROAD_WIDTH_SCALE })
 

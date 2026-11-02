@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CARS } from '../src/constants/config.js'
+import { existsSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { CARS, ENGINES, TRANSMISSIONS } from '../src/constants/config.js'
 import { createCarModel } from '../src/engine/carModel.js'
 
 // Canvas textures are created here but not rendered in Node.
@@ -45,5 +47,49 @@ test('Meridian GT has the reference-inspired front and side details', () => {
   for (const wheel of gt.wheels) {
     // The reference has fine multi-spoke alloys rather than five heavy bars.
     assert.ok(wheel.spin.children.length >= 20)
+  }
+})
+
+
+test('GLB cars are wired to their supplied models', () => {
+  const expected = [
+    {
+      id: 'bmw-m4-csl', engine: 's58-i6', transmission: 'dsg',
+      file: 'bmw_m4csl.glb', minBytes: 1_000_000,
+    },
+    {
+      id: 'civic-type-r', engine: 'k20c1-i4', transmission: 'manual',
+      file: '2023_honda_civic_type_r.glb', minBytes: 1_000_000,
+    },
+    {
+      id: 'perodua-myvi', engine: 'k3-ve-i4', transmission: 'manual',
+      file: '2005_perodua_myvi.glb', minBytes: 500_000,
+    },
+  ]
+  for (const entry of expected) {
+    const car = CARS.find((candidate) => candidate.id === entry.id)
+    assert.ok(car, `${entry.id} is in the catalogue`)
+    assert.equal(car.defaultEngine, entry.engine)
+    assert.ok(ENGINES[entry.engine], `${entry.engine} exists`)
+    assert.equal(car.defaultTransmission, entry.transmission)
+    assert.equal(TRANSMISSIONS[car.defaultTransmission].id, entry.transmission)
+    assert.equal(car.modelUrl, `/models/${entry.file}`)
+    assert.ok(car.modelLength > 3, `${entry.id} has a target length`)
+    assert.ok(car.modelForward, `${entry.id} declares a forward axis`)
+    assert.ok(car.modelCredit, `${entry.id} has model attribution`)
+    const modelPath = fileURLToPath(new URL(`../public${car.modelUrl}`, import.meta.url))
+    assert.ok(existsSync(modelPath), `${entry.file} is present in public/models`)
+    assert.ok(statSync(modelPath).size > entry.minBytes, `${entry.file} is a real asset`)
+  }
+})
+
+
+test('every fleet car has a rendered card thumbnail', () => {
+  for (const car of CARS) {
+    const thumbnail = fileURLToPath(
+      new URL(`../public/images/cars/${car.id}.png`, import.meta.url),
+    )
+    assert.ok(existsSync(thumbnail), `${car.id} card thumbnail is present`)
+    assert.ok(statSync(thumbnail).size > 10_000, `${car.id} card thumbnail is not empty`)
   }
 })

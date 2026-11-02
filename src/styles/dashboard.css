@@ -5,12 +5,18 @@
   grid-template-columns: minmax(126px, 0.55fr) minmax(0, 2.3fr) 150px;
   gap: 18px;
   align-items: center;
-  padding: 14px 22px;
-  border-radius: 22px;
-  border: 1px solid var(--line-strong);
-  background: linear-gradient(180deg, rgba(12, 18, 28, 0.9), rgba(6, 10, 17, 0.95));
-  backdrop-filter: blur(28px);
-  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  padding: 10px 20px 5px;
+  border-radius: 20px;
+  border: 1px solid rgba(120, 170, 200, 0.2);
+  background: linear-gradient(
+    180deg,
+    rgba(8, 13, 21, 0.16) 0%,
+    rgba(8, 13, 21, 0.46) 36%,
+    rgba(5, 9, 15, 0.82) 72%,
+    rgba(4, 7, 12, 0.94) 100%
+  );
+  backdrop-filter: blur(8px);
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .dash-identity {
@@ -105,7 +111,7 @@
 
 .gauge {
   width: 100%;
-  max-width: 204px;
+  max-width: 170px;
   margin: 0 auto;
 }
 
@@ -362,7 +368,11 @@
   .dashboard {
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 14px;
-    padding: 12px 18px;
+    padding: 8px 18px;
+  }
+
+  .dashboard .gauge {
+    max-width: 148px;
   }
 
   .dash-identity {
@@ -388,7 +398,7 @@
   }
 
   .dashboard .gauge {
-    max-width: 148px;
+    max-width: 132px;
   }
 
   .gear-value {
@@ -431,7 +441,7 @@
   }
 
   .dashboard .gauge {
-    max-width: 126px;
+    max-width: 112px;
   }
 
   .gear-value {
@@ -471,5 +481,107 @@
 
   .stat-value {
     font-size: 12px;
+  }
+}
+
+.fuel-meter {
+  width: min(100%, 232px);
+  margin-top: 5px;
+  padding: 3px 6px 4px;
+  border: 1px solid rgba(120, 170, 200, 0.18);
+  border-radius: 6px;
+  background: rgba(5, 10, 16, 0.34);
+}
+
+.fuel-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+
+.fuel-label {
+  color: var(--muted-2);
+  letter-spacing: 0.12em;
+}
+
+.fuel-track {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fuel-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34e1c8, #7c8cff);
+  transition: width 0.2s ease;
+}
+
+.fuel-value {
+  min-width: 34px;
+  color: var(--muted);
+  text-align: right;
+  font-size: 7px;
+}
+
+.fuel-refuel {
+  padding: 2px 4px;
+  border: 1px solid rgba(105, 187, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(105, 187, 255, 0.1);
+  color: #cfeaff;
+  font: 700 6.5px var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.fuel-refuel:hover {
+  background: rgba(105, 187, 255, 0.22);
+}
+
+.fuel-sub {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  letter-spacing: 0.04em;
+}
+
+.fuel-meter.is-low .fuel-track > span {
+  background: #ffb45e;
+}
+
+.fuel-meter.is-low .fuel-value {
+  color: #ffcf8a;
+}
+
+.fuel-meter.is-empty {
+  border-color: rgba(255, 110, 100, 0.5);
+}
+
+.fuel-meter.is-empty .fuel-track > span {
+  background: #ff5e52;
+}
+
+.fuel-meter.is-empty .fuel-sub {
+  color: #ff9a91;
+}
+
+@media (max-width: 860px) {
+  .fuel-meter {
+    margin-top: 2px;
+    padding: 2px 5px 3px;
+  }
+
+  .fuel-refuel {
+    font-size: 6px;
+    padding: 1px 3px;
   }
 }

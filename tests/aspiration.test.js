@@ -25,7 +25,8 @@ test('each engine reports its factory aspiration tune', () => {
   assert.equal(defaultAspirationForEngine(ENGINES['twin-turbo-v6']).id, 'twin-turbo')
   assert.equal(defaultAspirationForEngine(ENGINES['supercharged-v8']).id, 'supercharger')
   assert.equal(defaultAspirationForEngine(ENGINES['vtec-i4']).id, 'vtec')
-  assert.equal(Object.keys(ASPIRATIONS).length, 5)
+  assert.equal(defaultAspirationForEngine(ENGINES['k20c1-i4']).id, 'turbo-vtec')
+  assert.equal(Object.keys(ASPIRATIONS).length, 6)
 })
 
 test('the factory tune is the identity tune for existing performance', () => {
@@ -79,4 +80,15 @@ test('free roam inherits the selected aspiration', async () => {
   vehicle.selectRange('D')
   for (let i = 0; i < 100; i += 1) vehicle.update(0.05, { throttle: 1 })
   assert.ok(vehicle.snapshot().boost > 0)
+})
+
+
+test('turbo-vtec combines boost and a high-cam change', () => {
+  const engine = ENGINES['k20c1-i4']
+  const combined = peakPowerHp(engine, getAspiration('turbo-vtec'))
+  assert.ok(combined > peakPowerHp(engine, getAspiration('vtec')))
+  assert.ok(combined > peakPowerHp(engine, getAspiration('na')))
+  const vehicle = create('k20c1-i4', 'turbo-vtec')
+  for (let i = 0; i < 180; i += 1) vehicle.update(0.05, { throttle: 1 })
+  assert.ok(vehicle.speed > 20)
 })

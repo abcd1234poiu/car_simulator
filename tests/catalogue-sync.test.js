@@ -16,6 +16,7 @@ test('every car exposes every transmission model', () => {
   for (const car of CARS) {
     assert.deepEqual([...car.transmissions], all, car.id)
     assert.ok(car.transmissions.includes(car.defaultTransmission), car.id)
+    assert.ok(car.fuelCapacity > 0, `${car.id} has a fuel tank`)
   }
 })
 

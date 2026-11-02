@@ -304,11 +304,49 @@
   color: var(--car-accent);
 }
 
-.car-card .car-silhouette {
+.car-card-visual {
+  position: relative;
   width: 100%;
-  height: auto;
+  aspect-ratio: 2.15 / 1;
   margin: 8px 0 2px;
+  overflow: hidden;
+}
+
+.car-card .car-silhouette {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.45));
+  display: none;
+}
+
+.car-card-visual.is-fallback .car-silhouette {
+  display: block;
+}
+
+.car-card-visual.is-fallback .car-card-photo {
+  display: none;
+}
+
+.car-card-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 16px 22px rgba(0, 0, 0, 0.5));
+  transform: scale(1.18);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  opacity: 0.9;
+}
+
+.car-card:hover .car-card-photo,
+.car-card.is-active .car-card-photo {
+  transform: scale(1.22);
+  opacity: 1;
 }
 
 .car-card-name {
@@ -327,7 +365,8 @@
 
 .car-card-specs {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
   font-family: var(--font-mono);
@@ -873,4 +912,13 @@
   .final-specs dd {
     font-size: 15px;
   }
+}
+
+.summary-credit {
+  margin-top: 6px;
+  color: var(--muted);
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  opacity: 0.72;
 }

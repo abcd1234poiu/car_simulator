@@ -23,7 +23,7 @@ function Pedal({ label, value, tone }) {
 }
 
 export function Dashboard({
-  car, engine, aspiration, transmission, telemetry, shiftPulse, ignitionSweep = 0, tyre,
+  car, engine, aspiration, transmission, telemetry, shiftPulse, ignitionSweep = 0, tyre, onRefuel,
 }) {
   const rpmFraction = telemetry.rpmFraction ?? 0
   const litLights = Math.round(
@@ -38,6 +38,13 @@ export function Dashboard({
   const handbrakeOn = !ignitionOff && telemetry.handbrake
   const drifting = !ignitionOff && (telemetry.speedKmh ?? 0) > 25 &&
     Math.abs(telemetry.slipAngle ?? 0) > 0.14
+  const fuel = telemetry.fuel ?? 0
+  const fuelCapacity = telemetry.fuelCapacity ?? 0
+  const fuelFraction = fuelCapacity > 0 ? fuel / fuelCapacity : 0
+  const fuelPercent = Math.round(fuelFraction * 100)
+  const fuelLow = fuelFraction < 0.15
+  const fuelEmpty = telemetry.fuelStarved || fuelFraction <= 0.001
+  const consumption = telemetry.fuelConsumption ?? 0
 
   return (
     <section className="dashboard" aria-label="Driving dashboard">
@@ -102,6 +109,31 @@ export function Dashboard({
               transmission.type === 'cvt' && automatic ? 'CVT · VIRTUAL RATIO' :
                 automatic ? `${transmission.shortName.toUpperCase()} · AUTO` :
                   'GEAR · E / Q TO SHIFT'}
+          </div>
+
+          <div
+            className={`fuel-meter ${fuelLow ? 'is-low' : ''} ${fuelEmpty ? 'is-empty' : ''}`}
+            title={`${fuel.toFixed(1)} L / ${fuelCapacity} L${
+              telemetry.fuelRangeKm ? ` · about ${Math.round(telemetry.fuelRangeKm)} km range` : ''
+            }`}
+          >
+            <div className="fuel-line">
+              <span className="fuel-label">FUEL</span>
+              <span className="fuel-track"><span style={{ width: `${fuelPercent}%` }} /></span>
+              <span className="fuel-value">{fuel.toFixed(1)} L</span>
+              <button
+                type="button"
+                className="fuel-refuel"
+                onClick={onRefuel}
+                title="Refuel (U)"
+              >
+                REFUEL
+              </button>
+            </div>
+            <div className="fuel-sub">
+              <span>{fuelEmpty ? 'EMPTY' : `${fuelPercent}%`}</span>
+              <span>{consumption > 0.1 ? `AVG ${consumption.toFixed(1)} L/100km` : 'AVG —'}</span>
+            </div>
           </div>
 
           <div className="dash-pedals">

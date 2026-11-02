@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { createCarModel } from '../engine/carModel.js'
+import { disposeCarVisual, loadGlbCarModel } from '../engine/glbCar.js'
 import { CarSilhouette } from './CarSilhouette.jsx'
 
 /** The selection screen and driving scene use the exact same car geometry. */
@@ -31,8 +32,25 @@ export function CarPreview3D({ car }) {
     rim.position.set(4, 5, 6)
     scene.add(rim)
 
-    const model = createCarModel(car)
-    scene.add(model.group)
+    const fallback = createCarModel(car)
+    let activeGroup = fallback.group
+    let cancelled = false
+    scene.add(activeGroup)
+
+    if (car.modelUrl) {
+      loadGlbCarModel(car).then((loaded) => {
+        if (cancelled || !loaded) {
+          disposeCarVisual(loaded?.group)
+          return
+        }
+        scene.remove(activeGroup)
+        disposeCarVisual(activeGroup)
+        activeGroup = loaded.group
+        scene.add(activeGroup)
+      }).catch((error) => {
+        console.warn('GLB preview could not load; keeping the parametric model.', error)
+      })
+    }
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100)
     camera.position.set(5.2, 3.3, -8.8)
     camera.lookAt(0, 0.7, 0)
@@ -50,7 +68,7 @@ export function CarPreview3D({ car }) {
 
     let frame
     const render = (time) => {
-      model.group.rotation.y = -0.42 + Math.sin(time * 0.00032) * 0.2
+      activeGroup.rotation.y = -0.42 + Math.sin(time * 0.00032) * 0.2
       renderer.render(scene, camera)
       canvas.style.opacity = '1'
       frame = requestAnimationFrame(render)
@@ -58,23 +76,11 @@ export function CarPreview3D({ car }) {
     frame = requestAnimationFrame(render)
 
     return () => {
+      cancelled = true
       cancelAnimationFrame(frame)
       observer.disconnect()
-      const geometries = new Set()
-      const materials = new Set()
-      const textures = new Set()
-      model.group.traverse((item) => {
-        if (item.geometry) geometries.add(item.geometry)
-        if (item.material) {
-          for (const material of Array.isArray(item.material) ? item.material : [item.material]) {
-            materials.add(material)
-            if (material.map) textures.add(material.map)
-          }
-        }
-      })
-      geometries.forEach((geometry) => geometry.dispose())
-      materials.forEach((material) => material.dispose())
-      textures.forEach((texture) => texture.dispose())
+      disposeCarVisual(activeGroup)
+      if (activeGroup !== fallback.group) disposeCarVisual(fallback.group)
       renderer.dispose()
       canvas.style.opacity = '0'
     }

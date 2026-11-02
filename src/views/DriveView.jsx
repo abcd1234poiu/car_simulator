@@ -34,9 +34,11 @@ const CONTROL_ROWS = [
   ['1 / 2 / 3', 'Eco / Normal / Sport'],
   ['T', 'Traction control on / off'],
   ['Space', 'Handbrake'],
+  ['Drag screen', 'Look around the car'],
   ['R', 'Return to spawn & restart shift'],
   ['P / Esc', 'Pause'],
   ['I', 'Ignition on / off'],
+  ['U', 'Refuel'],
   ['M', 'Mute sound'],
 ]
 
@@ -67,6 +69,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
     resetCount,
     togglePause,
     toggleIgnition,
+    refuel,
     teleport,
     reset,
     setTouch,
@@ -411,6 +414,7 @@ export function DriveView({ session, audio, muted, onToggleMute, onExit }) {
           shiftPulse={shiftPulse}
           ignitionSweep={ignitionSweep}
           tyre={tyre}
+          onRefuel={refuel}
         />
       </div>
 

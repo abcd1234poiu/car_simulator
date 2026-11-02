@@ -1,6 +1,7 @@
 /** Three.js scene for the expanded two-city driving world. */
 import * as THREE from 'three'
 import { createCarModel, createSunTexture } from './carModel.js'
+import { disposeCarVisual, loadGlbCarModel } from './glbCar.js'
 import {
   BRIDGE, BUILDINGS, ROAD_SEGMENTS, ROAD_SHOULDER_WIDTH, SPAWN, WATERWAY, WORLD_BOUNDS,
   roadDeckHeightAt, surfaceHeightAt, terrainHeightAt, terrainMeshHeightAt,
@@ -60,6 +61,7 @@ function buildRoadMeshes(scene) {
   const asphalt = []
   const freeways = []
   const markings = []
+  const edgeLines = []
   const medianLines = []
   const junctions = new Map()
 
@@ -80,10 +82,16 @@ function buildRoadMeshes(scene) {
         x1, heightAt(t1) + 0.1, z1, halfWidth + ROAD_SHOULDER_WIDTH)
       addQuad(isFreeway ? freeways : asphalt,
         x0, heightAt(t0) + 0.13, z0, x1, heightAt(t1) + 0.13, z1, halfWidth)
-      if (isFreeway) {
-        addQuad(medianLines, x0, heightAt(t0) + 0.19, z0,
-          x1, heightAt(t1) + 0.19, z1, 0.28)
+      const edgeOffset = Math.max(0.4, halfWidth - 0.32)
+      const edgeX = -(z1 - z0) / Math.max(length, 1) * edgeOffset
+      const edgeZ = (x1 - x0) / Math.max(length, 1) * edgeOffset
+      for (const side of [-1, 1]) {
+        addQuad(edgeLines,
+          x0 + edgeX * side, heightAt(t0) + 0.18, z0 + edgeZ * side,
+          x1 + edgeX * side, heightAt(t1) + 0.18, z1 + edgeZ * side, 0.085)
       }
+      addQuad(medianLines, x0, heightAt(t0) + 0.19, z0,
+        x1, heightAt(t1) + 0.19, z1, isFreeway ? 0.28 : 0.15)
     }
     for (const [point, t] of [[a, 0], [b, 1]]) {
       const key = `${point.x},${point.z}`
@@ -100,8 +108,11 @@ function buildRoadMeshes(scene) {
     if (length < 40 || road.kind === 'hill') continue
     const ux = (b.x - a.x) / length
     const uz = (b.z - a.z) / length
+    const laneOffsets = isFreeway || road.kind === 'arterial'
+      ? [-halfWidth * 0.5, halfWidth * 0.5]
+      : []
     for (let distance = 20; distance < length - 15; distance += 42) {
-      for (const offset of isFreeway ? [-halfWidth * 0.46, halfWidth * 0.46] : [0]) {
+      for (const offset of laneOffsets) {
         const startX = a.x + ux * distance - uz * offset
         const startZ = a.z + uz * distance + ux * offset
         addQuad(markings, startX, heightAt(distance / length) + 0.2, startZ,
@@ -120,6 +131,7 @@ function buildRoadMeshes(scene) {
   scene.add(meshFromTriangles(asphalt, 0x262a30))
   scene.add(meshFromTriangles(freeways, 0x1c252d, 0.002))
   scene.add(meshFromTriangles(markings, 0xc6c4ab, 0.004))
+  scene.add(meshFromTriangles(edgeLines, 0xb4b2a3, 0.005))
   scene.add(meshFromTriangles(medianLines, 0xd7b965, 0.006))
 }
 
@@ -258,6 +270,22 @@ function createSmokeTexture() {
   return new THREE.CanvasTexture(canvas)
 }
 
+function createFlameTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 96
+  canvas.height = 96
+  const context = canvas.getContext('2d')
+  const gradient = context.createRadialGradient(48, 48, 2, 48, 48, 46)
+  gradient.addColorStop(0, 'rgba(255,255,240,1)')
+  gradient.addColorStop(0.2, 'rgba(255,238,150,0.98)')
+  gradient.addColorStop(0.46, 'rgba(255,160,45,0.9)')
+  gradient.addColorStop(0.72, 'rgba(255,72,10,0.45)')
+  gradient.addColorStop(1, 'rgba(255,40,0,0)')
+  context.fillStyle = gradient
+  context.fillRect(0, 0, 96, 96)
+  return new THREE.CanvasTexture(canvas)
+}
+
 export class RoadScene {
   constructor(canvas, car) {
     this.canvas = canvas
@@ -270,7 +298,7 @@ export class RoadScene {
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x91a5b8)
     this.scene.fog = new THREE.Fog(0x91a5b8, 900, 4400)
-    this.camera = new THREE.PerspectiveCamera(58, 1, 0.25, 8500)
+    this.camera = new THREE.PerspectiveCamera(56, 1, 0.25, 8500)
     this.camera.position.set(SPAWN.x, 6 + surfaceHeightAt(SPAWN.x, SPAWN.z), SPAWN.z + 12)
     this.lookTarget = new THREE.Vector3(SPAWN.x, 1, SPAWN.z - 10)
 
@@ -318,10 +346,88 @@ export class RoadScene {
     this.reverseLightMaterial = model.reverseLightMaterial
     this.scene.add(this.carGroup)
 
+    // Swap in the optional high-detail GLB once it has loaded. The parametric
+    // model stays visible until then, so the game never blocks on the download.
+    this.carModelRequest = 0
+    this.disposed = false
+    if (car.modelUrl) {
+      const request = ++this.carModelRequest
+      loadGlbCarModel(car).then((loaded) => {
+        if (!loaded || this.disposed || request !== this.carModelRequest) {
+          disposeCarVisual(loaded?.group)
+          return
+        }
+        const previous = this.carGroup
+        this.carGroup = loaded.group
+        this.carGroup.rotation.order = 'YXZ'
+        this.carGroup.position.copy(previous.position)
+        this.carGroup.rotation.copy(previous.rotation)
+        this.wheels = loaded.wheels
+        this.brakeLightMaterial = loaded.brakeLightMaterial ?? this.brakeLightMaterial
+        this.reverseLightMaterial = loaded.reverseLightMaterial
+        this.scene.add(this.carGroup)
+        this.scene.remove(previous)
+        disposeCarVisual(previous)
+      }).catch((error) => {
+        console.warn('GLB car model could not be loaded; using the parametric car instead.', error)
+      })
+    }
+
     this.smokeTexture = createSmokeTexture()
     this.smoke = []
     this.smokeClock = 0
     this.skidClock = 0
+    this.flameTexture = createFlameTexture()
+    this.exhaustFlashes = []
+    this.exhaustLight = new THREE.PointLight(0xff7a2a, 0, 7, 2)
+    this.exhaustLight.position.set(SPAWN.x, 0.6, SPAWN.z)
+    this.scene.add(this.exhaustLight)
+    this.exhaustLightLife = 0
+    this.exhaustLightMax = 0
+    this.exhaustLightPower = 0
+
+    // Drag-to-orbit camera. The chase view recentres as soon as the car moves.
+    this.orbitYaw = 0
+    this.orbitPitch = 0
+    this.orbitDragging = false
+    this.orbitPointerId = null
+    this.orbitLast = { x: 0, y: 0 }
+    this.lastX = SPAWN.x
+    this.lastZ = SPAWN.z
+    this.lastHeading = SPAWN.heading
+    this.lastGroundY = surfaceHeightAt(SPAWN.x, SPAWN.z)
+    this.renderer.domElement.style.touchAction = 'none'
+    this.renderer.domElement.style.cursor = 'grab'
+    this.handleOrbitDown = (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      if (event.target !== this.renderer.domElement) return
+      this.orbitDragging = true
+      this.orbitPointerId = event.pointerId
+      this.orbitLast.x = event.clientX
+      this.orbitLast.y = event.clientY
+      this.renderer.domElement.setPointerCapture?.(event.pointerId)
+      this.renderer.domElement.style.cursor = 'grabbing'
+    }
+    this.handleOrbitMove = (event) => {
+      if (!this.orbitDragging || event.pointerId !== this.orbitPointerId) return
+      const dx = event.clientX - this.orbitLast.x
+      const dy = event.clientY - this.orbitLast.y
+      this.orbitLast.x = event.clientX
+      this.orbitLast.y = event.clientY
+      this.orbitYaw = clamp(this.orbitYaw - dx * 0.006, -2.7, 2.7)
+      this.orbitPitch = clamp(this.orbitPitch + dy * 0.004, -0.32, 0.85)
+    }
+    this.handleOrbitUp = (event) => {
+      if (event && event.pointerId !== undefined && event.pointerId !== this.orbitPointerId) return
+      if (!this.orbitDragging) return
+      this.orbitDragging = false
+      this.orbitPointerId = null
+      this.renderer.domElement.style.cursor = 'grab'
+    }
+    this.renderer.domElement.addEventListener('pointerdown', this.handleOrbitDown)
+    window.addEventListener('pointermove', this.handleOrbitMove)
+    window.addEventListener('pointerup', this.handleOrbitUp)
+    window.addEventListener('pointercancel', this.handleOrbitUp)
     this.skidCount = 0
     this.skids = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.2, 0.012, 1.1),
@@ -374,6 +480,10 @@ export class RoadScene {
     this.clock += step
 
     const groundY = telemetry?.y ?? surfaceHeightAt(x, z)
+    this.lastX = x
+    this.lastZ = z
+    this.lastHeading = heading
+    this.lastGroundY = groundY
     this.carGroup.position.set(x, groundY + (telemetry?.suspensionTravel ?? 0) + 0.15, z)
     this.roll = damp(this.roll, clamp((telemetry?.bodyRoll ?? 0) - slip * 0.08, -0.14, 0.14), step, 6)
     this.carGroup.rotation.set(
@@ -386,7 +496,9 @@ export class RoadScene {
       wheel.spin.rotation.x -= spin
       if (wheel.front) wheel.pivot.rotation.y = steer * 0.55
     }
-    this.brakeLightMaterial.emissiveIntensity = braking > 0.08 ? 2.9 : 0.35
+    if (this.brakeLightMaterial) {
+      this.brakeLightMaterial.emissiveIntensity = braking > 0.08 ? 3.4 : 0.9
+    }
     if (this.reverseLightMaterial) {
       this.reverseLightMaterial.emissiveIntensity = telemetry?.gear === -1 ? 2.4 : 0.04
     }
@@ -441,26 +553,122 @@ export class RoadScene {
       this.skidClock = 0
     }
 
-    const speedFactor = clamp(speed / 42, 0, 1)
-    const back = 8.2 + speedFactor * 1.8
-    const desiredX = x - Math.sin(heading) * back
-    const desiredZ = z + Math.cos(heading) * back
-    this.camera.position.x = damp(this.camera.position.x, desiredX, step, 5.4)
+    const speedFactor = clamp(speed / 48, 0, 1)
+    if (!this.orbitDragging && Math.abs(telemetry?.signedSpeed ?? speed) > 2.4) {
+      this.orbitYaw = damp(this.orbitYaw, 0, step, 3.4)
+      this.orbitPitch = damp(this.orbitPitch, 0, step, 3.4)
+    }
+    const cameraYaw = heading + this.orbitYaw
+    const back = 6.2 + speedFactor * 1.3
+    const distance = back * (1 - Math.min(0.2, Math.abs(this.orbitPitch) * 0.16))
+    const desiredX = x - Math.sin(cameraYaw) * distance
+    const desiredZ = z + Math.cos(cameraYaw) * distance
+    const baseHeight = groundY + 1.7 + speedFactor * 0.5 + this.orbitPitch * 4.2
+    this.camera.position.x = damp(this.camera.position.x, desiredX, step, 6.4)
     this.camera.position.y = damp(this.camera.position.y,
-      Math.max(surfaceHeightAt(desiredX, desiredZ) + 2.8, groundY + 4.5 + speedFactor * 0.8), step, 5)
-    this.camera.position.z = damp(this.camera.position.z, desiredZ, step, 5.4)
-    const lookAhead = 8 + speedFactor * 8
-    this.lookTarget.x = damp(this.lookTarget.x, x + Math.sin(heading) * lookAhead, step, 6)
-    this.lookTarget.y = damp(this.lookTarget.y, groundY + 1.05, step, 6)
-    this.lookTarget.z = damp(this.lookTarget.z, z - Math.cos(heading) * lookAhead, step, 6)
+      Math.max(surfaceHeightAt(desiredX, desiredZ) + 1.5, baseHeight), step, 6)
+    this.camera.position.z = damp(this.camera.position.z, desiredZ, step, 6.4)
+    const orbitAmount = Math.min(1, Math.abs(this.orbitYaw) / 1.2)
+    const lookAhead = (7 + speedFactor * 6) * (1 - orbitAmount * 0.82) + orbitAmount * 0.8
+    this.lookTarget.x = damp(this.lookTarget.x, x + Math.sin(heading) * lookAhead, step, 7)
+    this.lookTarget.y = damp(this.lookTarget.y, groundY + 0.85, step, 7)
+    this.lookTarget.z = damp(this.lookTarget.z, z - Math.cos(heading) * lookAhead, step, 7)
     this.camera.lookAt(this.lookTarget)
+    this.updateExhaustFlashes(step)
     this.renderer.render(this.scene, this.camera)
   }
 
+  spawnExhaustFire(intensity = 0.8) {
+    const heading = this.lastHeading ?? SPAWN.heading
+    const x = this.lastX ?? SPAWN.x
+    const z = this.lastZ ?? SPAWN.z
+    const groundY = this.lastGroundY ?? surfaceHeightAt(x, z)
+    const backX = -Math.sin(heading)
+    const backZ = Math.cos(heading)
+    const rightX = Math.cos(heading)
+    const rightZ = Math.sin(heading)
+
+    this.exhaustLightLife = Math.max(this.exhaustLightLife, 0.1 + intensity * 0.05)
+    this.exhaustLightMax = Math.max(this.exhaustLightMax, this.exhaustLightLife)
+    this.exhaustLightPower = 5 + intensity * 7
+    this.exhaustLight.position.set(
+      x + backX * 2.48,
+      groundY + 0.62,
+      z + backZ * 2.48,
+    )
+
+    // Just a brief tailpipe flash — no fireball.
+    for (const side of [-1, 1]) {
+      if (Math.random() > 0.62) continue
+      const size = 0.11 + intensity * 0.09 + Math.random() * 0.04
+      const material = new THREE.SpriteMaterial({
+        map: this.flameTexture,
+        color: 0xff9a3a,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.set(
+        x + backX * 2.56 + rightX * side * 0.52,
+        groundY + 0.52,
+        z + backZ * 2.56 + rightZ * side * 0.52,
+      )
+      sprite.scale.setScalar(size)
+      this.scene.add(sprite)
+      const life = 0.07 + Math.random() * 0.05
+      this.exhaustFlashes.push({
+        object: sprite,
+        life,
+        maxLife: life,
+        baseScale: new THREE.Vector3(size, size, size),
+        baseOpacity: 0.5,
+        velocity: new THREE.Vector3(backX, 0.12, backZ).multiplyScalar(1.1),
+      })
+    }
+  }
+
+  updateExhaustFlashes(step) {
+    if (this.exhaustLightLife > 0) {
+      this.exhaustLightLife = Math.max(0, this.exhaustLightLife - step)
+      const t = this.exhaustLightMax > 0 ? this.exhaustLightLife / this.exhaustLightMax : 0
+      this.exhaustLight.intensity = this.exhaustLightPower * t
+    } else {
+      this.exhaustLight.intensity = 0
+    }
+    for (let index = this.exhaustFlashes.length - 1; index >= 0; index -= 1) {
+      const flash = this.exhaustFlashes[index]
+      flash.life -= step
+      if (flash.life <= 0) {
+        this.scene.remove(flash.object)
+        flash.object.material.dispose()
+        this.exhaustFlashes.splice(index, 1)
+        continue
+      }
+      const t = flash.life / flash.maxLife
+      flash.object.position.addScaledVector(flash.velocity, step)
+      flash.object.material.opacity = flash.baseOpacity * t
+      const grow = 1 + (1 - t) * 0.65
+      flash.object.scale.set(
+        flash.baseScale.x * grow,
+        flash.baseScale.y * (1 + (1 - t) * 0.35),
+        flash.baseScale.z * grow,
+      )
+    }
+  }
+
   dispose() {
+    this.disposed = true
+    this.carModelRequest += 1
+    this.renderer.domElement.removeEventListener('pointerdown', this.handleOrbitDown)
+    window.removeEventListener('pointermove', this.handleOrbitMove)
+    window.removeEventListener('pointerup', this.handleOrbitUp)
+    window.removeEventListener('pointercancel', this.handleOrbitUp)
     this.resizeObserver?.disconnect()
     this.scene.traverse((object) => {
-      object.geometry?.dispose()
+      if (object.geometry && !object.userData.sharedGeometry) object.geometry.dispose()
       if (object.material) {
         for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
           material.map?.dispose()
@@ -469,6 +677,12 @@ export class RoadScene {
       }
     })
     this.smokeTexture.dispose()
+    this.flameTexture?.dispose()
+    for (const flash of this.exhaustFlashes) {
+      this.scene.remove(flash.object)
+      flash.object.material.dispose()
+    }
+    this.exhaustFlashes = []
     this.renderer.dispose()
   }
 }

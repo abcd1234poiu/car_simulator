@@ -117,6 +117,18 @@ export const ENGINES = {
     ],
     sound: { profile: 'twin-turbo', harmonic: 2.32, sub: 0.22, noise: 0.62, brightness: 1.15, drive: 1.25, volume: 0.9, lfoRate: 26 },
   },
+  's58-i6': {
+    id: 's58-i6', name: '3.0L Twin-Turbo I6', shortName: 'TT I6',
+    layout: 'Inline-6', badge: 'TT I6', displacement: 3.0, induction: 'twin-turbo', cylinders: 6,
+    idleRpm: 800, redline: 7200, maxRpm: 7600,
+    character: 'A high-boost inline-six with a broad torque plateau and a hard top-end pull.',
+    torqueCurve: [
+      { rpm: 800, torque: 450 }, { rpm: 1800, torque: 550 }, { rpm: 2750, torque: 650 },
+      { rpm: 4000, torque: 650 }, { rpm: 5500, torque: 640 }, { rpm: 6500, torque: 590 },
+      { rpm: 7200, torque: 520 }, { rpm: 7600, torque: 430 },
+    ],
+    sound: { profile: 'twin-turbo', harmonic: 2.55, sub: 0.2, noise: 0.66, brightness: 1.18, drive: 1.3, volume: 0.98, lfoRate: 28 },
+  },
   'supercharged-v8': {
     id: 'supercharged-v8', name: '5.0L Supercharged V8', shortName: 'Supercharged V8',
     layout: 'V8', badge: 'SC V8', displacement: 5.0, induction: 'supercharger', cylinders: 8,
@@ -140,6 +152,30 @@ export const ENGINES = {
       { rpm: 8500, torque: 210 }, { rpm: 8900, torque: 175 },
     ],
     sound: { profile: 'vtec', harmonic: 2.75, sub: 0.12, noise: 0.42, brightness: 1.35, drive: 1.15, volume: 0.9, lfoRate: 32 },
+  },
+  'k20c1-i4': {
+    id: 'k20c1-i4', name: '2.0L Turbo I4 (K20C1)', shortName: 'K20C1',
+    layout: 'Inline-4', badge: 'K20C1', displacement: 2.0, induction: 'turbo-vtec', cylinders: 4,
+    idleRpm: 800, redline: 7000, maxRpm: 7200,
+    character: 'High-boost four-cylinder with a strong midrange and a hard pull to redline.',
+    torqueCurve: [
+      { rpm: 800, torque: 250 }, { rpm: 1500, torque: 350 }, { rpm: 2500, torque: 420 },
+      { rpm: 3500, torque: 420 }, { rpm: 5000, torque: 400 }, { rpm: 6000, torque: 360 },
+      { rpm: 6800, torque: 300 }, { rpm: 7200, torque: 250 },
+    ],
+    sound: { profile: 'turbo', harmonic: 2.2, sub: 0.18, noise: 0.58, brightness: 1.15, drive: 1.25, volume: 0.9, lfoRate: 28 },
+  },
+  'k3-ve-i4': {
+    id: 'k3-ve-i4', name: '1.3L K3-VE I4', shortName: 'K3-VE',
+    layout: 'Inline-4', badge: 'K3-VE', displacement: 1.3, induction: 'natural', cylinders: 4,
+    idleRpm: 750, redline: 6000, maxRpm: 6500,
+    character: 'Compact naturally aspirated four tuned for easy city driving and low running costs.',
+    torqueCurve: [
+      { rpm: 800, torque: 90 }, { rpm: 2000, torque: 105 }, { rpm: 3200, torque: 116 },
+      { rpm: 4500, torque: 110 }, { rpm: 5500, torque: 95 }, { rpm: 6000, torque: 80 },
+      { rpm: 6500, torque: 65 },
+    ],
+    sound: { profile: 'smooth', harmonic: 2.1, sub: 0.12, noise: 0.2, brightness: 0.82, drive: 0.7, volume: 0.55, lfoRate: 26 },
   },
   'eco-i4': {
     id: 'eco-i4', name: '1.8L Economy I4', shortName: 'Economy I4',
@@ -208,6 +244,21 @@ export const ASPIRATIONS = {
     lag: 18,
     sound: { whistle: 0, whine: 0.055, brightness: 1.06, noise: 1.12, blowOff: false, vtec: false },
   },
+  'turbo-vtec': {
+    id: 'turbo-vtec',
+    name: 'Turbo VTEC',
+    shortName: 'Turbo VTEC',
+    badge: 'T-VTEC',
+    type: 'turbo-vtec',
+    description: 'Turbo boost and a high-cam VTEC change together: strong midrange, then a hard top-end step.',
+    torqueMultiplier: 1.04,
+    boostGain: 0.52,
+    spoolRpm: 2000,
+    lag: 3.4,
+    vtecRpm: 5600,
+    vtecGain: 1.12,
+    sound: { whistle: 0.05, whine: 0, brightness: 1.18, noise: 1.24, blowOff: true, vtec: true },
+  },
   vtec: {
     id: 'vtec',
     name: 'VTEC',
@@ -231,10 +282,16 @@ export const clamp01 = (value) => Math.min(1, Math.max(0, value))
 export function aspirationFactorAtRpm(aspiration, rpm, redline) {
   if (!aspiration) return 1
   const base = aspiration.torqueMultiplier ?? 1
-  if (aspiration.type === 'turbo' || aspiration.type === 'twin') {
+  if (aspiration.type === 'turbo' || aspiration.type === 'twin' ||
+    aspiration.type === 'turbo-vtec') {
     const span = Math.max(1, redline * 0.8 - aspiration.spoolRpm)
     const spool = clamp01((rpm - aspiration.spoolRpm) / span)
-    return base * (1 + aspiration.boostGain * spool)
+    const boost = 1 + aspiration.boostGain * spool
+    if (aspiration.type === 'turbo-vtec') {
+      const cam = clamp01((rpm - aspiration.vtecRpm) / 420)
+      return base * boost * (1 + (aspiration.vtecGain - 1) * cam)
+    }
+    return base * boost
   }
   if (aspiration.type === 'supercharger') {
     return base * (1 + aspiration.boostGain * clamp01(rpm / redline))
@@ -258,6 +315,7 @@ export function defaultAspirationForEngine(engine) {
     'twin-turbo': 'twin-turbo',
     supercharger: 'supercharger',
     vtec: 'vtec',
+    'turbo-vtec': 'turbo-vtec',
   }[engine?.induction] ?? 'na'
   return getAspiration(id)
 }
@@ -399,6 +457,7 @@ export const CARS = [
     color: '#f5c94a',
     accent: '#fff0a6',
     mass: 1460,
+    fuelCapacity: 50,
     drivetrain: 'FWD',
     grip: 0.82,
     dragCd: 0.32,
@@ -419,6 +478,7 @@ export const CARS = [
     color: '#22d3ee',
     accent: '#67e8f9',
     mass: 1340,
+    fuelCapacity: 55,
     drivetrain: 'RWD',
     grip: 0.95,
     dragCd: 0.3,
@@ -439,6 +499,7 @@ export const CARS = [
     color: '#ff5a3c',
     accent: '#ffb199',
     mass: 1710,
+    fuelCapacity: 70,
     drivetrain: 'RWD',
     grip: 0.83,
     dragCd: 0.35,
@@ -459,6 +520,7 @@ export const CARS = [
     color: '#f5c400',
     accent: '#ffdf4a',
     mass: 1590,
+    fuelCapacity: 75,
     drivetrain: 'AWD',
     grip: 0.99,
     dragCd: 0.27,
@@ -479,6 +541,7 @@ export const CARS = [
     color: '#a3e635',
     accent: '#d9f99d',
     mass: 1215,
+    fuelCapacity: 45,
     drivetrain: 'FWD',
     grip: 0.8,
     dragCd: 0.33,
@@ -489,6 +552,85 @@ export const CARS = [
     defaultEngine: 'inline-4',
     transmissions: ALL_TRANSMISSIONS,
     defaultTransmission: 'manual',
+  },
+  {
+    id: 'bmw-m4-csl',
+    name: 'BMW M4 CSL',
+    className: 'Track Coupe',
+    tagline: 'Track-focused, rear-drive and powered by a 550 hp twin-turbo inline-six.',
+    bodyStyle: 'coupe',
+    color: '#7f8b8f',
+    accent: '#d7e0e2',
+    mass: 1625,
+    fuelCapacity: 59,
+    drivetrain: 'RWD',
+    grip: 1.02,
+    dragCd: 0.34,
+    frontalArea: 2.0,
+    wheelRadius: 0.34,
+    seats: 2,
+    engines: ['s58-i6'],
+    defaultEngine: 's58-i6',
+    transmissions: ALL_TRANSMISSIONS,
+    defaultTransmission: 'dsg',
+    modelUrl: '/models/bmw_m4csl.glb',
+    modelLength: 4.8,
+    modelForward: '+X',
+    modelCredit: 'BMW M4 CSL by Mpgs Studios · CC BY 4.0',
+  },
+  {
+    id: 'civic-type-r',
+    name: 'Honda Civic Type R',
+    className: 'Hot Hatch',
+    tagline: 'Championship-white track hatch with a 320 hp turbo four and a six-speed manual.',
+    bodyStyle: 'hatch',
+    color: '#f3f1e6',
+    accent: '#d51f2b',
+    mass: 1429,
+    fuelCapacity: 47,
+    drivetrain: 'FWD',
+    grip: 0.97,
+    dragCd: 0.33,
+    frontalArea: 2.13,
+    wheelRadius: 0.34,
+    seats: 4,
+    engines: ['k20c1-i4'],
+    defaultEngine: 'k20c1-i4',
+    transmissions: ALL_TRANSMISSIONS,
+    defaultTransmission: 'manual',
+    modelUrl: '/models/2023_honda_civic_type_r.glb',
+    modelLength: 4.59,
+    modelForward: '+Z',
+    modelWheelMode: 'combined',
+    modelMerge: true,
+    modelCredit: '2023 Honda Civic Type R by Ddiaz Design · CC BY-NC-SA 4.0',
+  },
+  {
+    id: 'perodua-myvi',
+    name: 'Perodua Myvi',
+    className: 'City Hatch',
+    tagline: 'Lightweight Malaysian city car: simple, practical and easy to place in traffic.',
+    bodyStyle: 'hatch',
+    color: '#b9c3c7',
+    accent: '#e7edef',
+    mass: 980,
+    fuelCapacity: 40,
+    drivetrain: 'FWD',
+    grip: 0.83,
+    dragCd: 0.34,
+    frontalArea: 1.95,
+    wheelRadius: 0.3,
+    seats: 5,
+    engines: ['k3-ve-i4'],
+    defaultEngine: 'k3-ve-i4',
+    transmissions: ALL_TRANSMISSIONS,
+    defaultTransmission: 'manual',
+    modelUrl: '/models/2005_perodua_myvi.glb',
+    modelLength: 3.75,
+    modelForward: '+Z',
+    modelWheelMode: 'named',
+    modelWheelNames: ['wheel', 'wheel_1', 'wheel_2', 'wheel_3'],
+    modelCredit: '2005 Perodua Myvi by zairiq-zairiq-123-pixar-cars-bfdi · CC BY 4.0',
   },
 ]
 

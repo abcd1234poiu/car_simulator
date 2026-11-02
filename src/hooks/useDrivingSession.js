@@ -23,6 +23,7 @@ export function useDrivingSession({
   const pausedRef = useRef(false)
   const ignitionRef = useRef(false)
   const noticeTimer = useRef(null)
+  const fuelStarvedRef = useRef(false)
 
   const notify = useCallback((message, tone = 'info') => {
     window.clearTimeout(noticeTimer.current)
@@ -106,6 +107,16 @@ export function useDrivingSession({
     setIgnition(!ignitionRef.current)
   }, [setIgnition])
 
+  const refuel = useCallback(() => {
+    const before = physics.fuel ?? 0
+    const fuel = physics.refuel()
+    setTelemetry(physics.snapshot())
+    notify(
+      fuel > before + 0.01 ? `Refuelled to ${fuel.toFixed(1)} L` : 'Fuel tank is already full',
+      fuel > before + 0.01 ? 'info' : 'warn',
+    )
+  }, [physics, notify])
+
   const teleport = useCallback((point) => {
     if (!point) return
     const snapshot = physics.teleport(point.x, point.z, point.heading)
@@ -139,6 +150,13 @@ export function useDrivingSession({
     if (paused) input.clear()
   }, [paused, audio, input])
 
+  // Route exhaust pops to the scene so a visible flame leaves the tailpipes.
+  useEffect(() => {
+    if (!audio?.setPopListener) return undefined
+    audio.setPopListener((intensity) => sceneRef.current?.spawnExhaustFire?.(intensity))
+    return () => audio.setPopListener(null)
+  }, [audio, sceneRef])
+
   // Wire one-shot keyboard actions.
   useEffect(() => {
     input.attach(window, {
@@ -151,9 +169,10 @@ export function useDrivingSession({
       onDriveMode: setDriveMode,
       onTractionControl: toggleTractionControl,
       onIgnition: toggleIgnition,
+      onRefuel: refuel,
     })
     return () => input.detach()
-  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl, toggleIgnition])
+  }, [input, togglePause, reset, onToggleMute, requestShift, toggleGearboxMode, requestRange, setDriveMode, toggleTractionControl, toggleIgnition, refuel])
 
   // A browser visibility change should release controls and mute audio, not
   // open the in-game pause menu over the steering wheel.
@@ -187,6 +206,12 @@ export function useDrivingSession({
 
       const snapshot = physics.update(dt, input.update(dt))
       if (snapshot.shiftEvent) setShiftPulse((value) => value + 1)
+      if (snapshot.fuelStarved && !fuelStarvedRef.current) {
+        fuelStarvedRef.current = true
+        notify('Out of fuel — press U to refuel', 'warn')
+      } else if (!snapshot.fuelStarved) {
+        fuelStarvedRef.current = false
+      }
 
       audio?.update({
         rpm: snapshot.rpm,
@@ -196,6 +221,8 @@ export function useDrivingSession({
         shiftEvent: snapshot.shiftEvent,
         speedKmh: snapshot.speedKmh,
         offRoad: snapshot.offRoad,
+        gear: snapshot.gear,
+        dt,
       })
       sceneRef.current?.update(dt, snapshot)
 
@@ -208,7 +235,7 @@ export function useDrivingSession({
 
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [physics, input, audio, sceneRef])
+  }, [physics, input, audio, sceneRef, notify])
 
   return {
     telemetry,
@@ -220,6 +247,7 @@ export function useDrivingSession({
     resetCount,
     togglePause,
     toggleIgnition,
+    refuel,
     teleport,
     reset,
     setTouch,

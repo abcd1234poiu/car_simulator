@@ -30,6 +30,7 @@ export class InputController {
     this.onDriveMode = null
     this.onTractionControl = null
     this.onIgnition = null
+    this.onRefuel = null
     this.attached = false
 
     this.handleKeyDown = this.handleKeyDown.bind(this)
@@ -50,6 +51,7 @@ export class InputController {
     this.onDriveMode = handlers.onDriveMode ?? null
     this.onTractionControl = handlers.onTractionControl ?? null
     this.onIgnition = handlers.onIgnition ?? null
+    this.onRefuel = handlers.onRefuel ?? null
     target.addEventListener('keydown', this.handleKeyDown)
     target.addEventListener('keyup', this.handleKeyUp)
     target.addEventListener('blur', this.handleBlur)
@@ -111,6 +113,9 @@ export class InputController {
         return
       case 'KeyI':
         this.onIgnition?.()
+        return
+      case 'KeyU':
+        this.onRefuel?.()
         return
       default:
         this.keys.add(event.code)

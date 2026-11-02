@@ -40,6 +40,7 @@ const ASPIRATION_PROFILE = {
   turbo: 'turbo',
   'twin-turbo': 'twin-turbo',
   supercharger: 'supercharged',
+  'turbo-vtec': 'vtec',
   vtec: 'vtec',
 }
 
@@ -88,8 +89,10 @@ export class EngineAudio {
     this.lastThrottle = 0
     this.lastRpm = 0
     this.popCooldown = 0
+    this.overrunTime = 0
     this.lastState = null
     this.shiftDuckingUntil = 0
+    this.popListener = null
     this.aspiration = null
     this.baseAspiration = null
     this.voiceSound = null
@@ -413,7 +416,7 @@ export class EngineAudio {
     if (flare) {
       const profile = this.voiceSound?.profile ?? this.engine.sound?.profile
       const hot = ['muscle', 'turbo', 'twin-turbo', 'supercharged', 'vtec'].includes(profile)
-      this.playExhaustPop(hot ? 0.6 : 0.3)
+      if (hot) this.playExhaustPop(0.22)
       this.popCooldown = this.context.currentTime + 0.5
     }
     return true
@@ -524,8 +527,13 @@ export class EngineAudio {
     this.starterSources = [motor, whine, noise, lfo, firing, catchOsc]
   }
 
+  setPopListener(listener) {
+    this.popListener = typeof listener === 'function' ? listener : null
+  }
+
   playExhaustPop(intensity = 1) {
     if (!this.context || !this.nodes) return
+    this.popListener?.(intensity)
     const ctx = this.context
     const now = ctx.currentTime
     const out = ctx.createGain()
@@ -634,7 +642,7 @@ export class EngineAudio {
   }
 
   update({ rpm = 900, throttle = 0, boost = 0, limiter = false,
-    shiftEvent = null, speedKmh = 0, offRoad = false }) {
+    shiftEvent = null, speedKmh = 0, offRoad = false, gear = 1, dt = 0 }) {
     if (!this.started || !this.context || !this.engine || !this.nodes) return
 
     // Short engine blip when the engine catches after ignition.
@@ -660,18 +668,35 @@ export class EngineAudio {
 
     const performanceProfile = ['muscle', 'turbo', 'twin-turbo', 'supercharged', 'vtec']
       .includes(sound.profile)
-    const throttleDrop = this.lastThrottle - throttle
-    const overrun = throttle < 0.12 && rpm > 2200
+    const speed = Math.abs(speedKmh)
+    const closedThrottle = throttle < 0.09
+    this.overrunTime = closedThrottle ? this.overrunTime + dt : 0
+
+    // Real pops need exhaust heat, RPM and airflow. Stationary shifts, low-RPM
+    // shifts and idling never trigger them.
+    const hardUpshift = shiftEvent === 'up' && gear > 1 && speed > 30 &&
+      this.lastThrottle > 0.45 && this.lastRpm > this.engine.redline * 0.55
+    const performanceDownshift = shiftEvent === 'down' && speed > 40 &&
+      this.lastThrottle < 0.35
+    const canOverrun = closedThrottle && this.overrunTime > 0.12 &&
+      speed > 25 && rpm > this.engine.idleRpm + 1900
+
     if (now >= this.popCooldown) {
       if (performanceProfile) {
-        if (shiftEvent || throttleDrop > 0.55 || (overrun && Math.random() < 0.02)) {
-          this.playExhaustPop(shiftEvent ? 0.95 : 0.55 + Math.random() * 0.45)
-          this.popCooldown = now + (shiftEvent ? 0.12 : 0.22 + Math.random() * 0.45)
+        if (hardUpshift && Math.random() < 0.72) {
+          this.playExhaustPop(0.8 + Math.random() * 0.2)
+          this.popCooldown = now + 0.16
+        } else if (performanceDownshift && Math.random() < 0.5) {
+          this.playExhaustPop(0.45 + Math.random() * 0.25)
+          this.popCooldown = now + 0.24
+        } else if (canOverrun && Math.random() < 0.022) {
+          this.playExhaustPop(0.35 + Math.random() * 0.35)
+          this.popCooldown = now + 0.24 + Math.random() * 0.4
         }
-      } else if (overrun && (throttleDrop > 0.6 || Math.random() < 0.012)) {
-        // Even a quiet engine burbles softly when you lift off at revs.
-        this.playExhaustPop(0.32 + Math.random() * 0.22)
-        this.popCooldown = now + 0.55 + Math.random() * 0.7
+      } else if (canOverrun && speed > 32 && Math.random() < 0.006) {
+        // A quiet car only gives the occasional soft overrun burble.
+        this.playExhaustPop(0.2 + Math.random() * 0.15)
+        this.popCooldown = now + 0.7 + Math.random() * 0.8
       }
     }
     this.lastThrottle = throttle

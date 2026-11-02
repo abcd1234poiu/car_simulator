@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
   Gauge,
@@ -24,22 +24,48 @@ import {
   getCar,
   getEngine,
   getTransmission,
+  normalizeSuspension,
 } from '../constants/config.js'
 import { peakPowerHp, peakTorqueNm, performanceSummary } from '../engine/specs.js'
 import { CarSilhouette } from '../components/CarSilhouette.jsx'
 import { CarPreview3D } from '../components/CarPreview3D.jsx'
 import '../styles/select.css'
 
-export function SelectView({ audio, muted, onToggleMute, onStart }) {
-  const [carId, setCarId] = useState(DEFAULT_SELECTION.carId)
-  const [engineId, setEngineId] = useState(DEFAULT_SELECTION.engineId)
+export function SelectView({ audio, muted, onToggleMute, onStart, initialSelection }) {
+  const initial = initialSelection ?? DEFAULT_SELECTION
+  const initialCar = getCar(initial.carId ?? DEFAULT_SELECTION.carId)
+  const initialEngineId = initialCar.engines.includes(initial.engineId)
+    ? initial.engineId
+    : initialCar.defaultEngine
+  const [carId, setCarId] = useState(initialCar.id)
+  const [engineId, setEngineId] = useState(initialEngineId)
   const [aspirationId, setAspirationId] = useState(
-    () => defaultAspirationForEngine(getEngine(DEFAULT_SELECTION.engineId)).id,
+    () => (ASPIRATIONS[initial.aspirationId]
+      ? initial.aspirationId
+      : defaultAspirationForEngine(getEngine(initialEngineId)).id),
   )
-  const [transmissionId, setTransmissionId] = useState(DEFAULT_SELECTION.transmissionId)
-  const [tyreId, setTyreId] = useState(DEFAULT_TYRE)
-  const [suspension, setSuspension] = useState(DEFAULT_SUSPENSION)
+  const [transmissionId, setTransmissionId] = useState(
+    ALL_TRANSMISSIONS.includes(initial.transmissionId)
+      ? initial.transmissionId
+      : initialCar.defaultTransmission,
+  )
+  const [tyreId, setTyreId] = useState(
+    TYRES[initial.tyreId] ? initial.tyreId : DEFAULT_TYRE,
+  )
+  const [suspension, setSuspension] = useState(
+    () => normalizeSuspension(initial.suspension ?? DEFAULT_SUSPENSION),
+  )
   const [preview, setPreview] = useState({ engineId: null, aspirationId: null, active: false })
+  const summaryRef = useRef(null)
+
+  // Returning from a drive should show the car/model that was actually used,
+  // not reset the view to the hero and the default taxi.
+  useEffect(() => {
+    if (!initialSelection) return
+    summaryRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Only on mount; later selection changes should not move the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const car = getCar(carId)
   const engine = getEngine(engineId)
@@ -197,7 +223,20 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
                       </span>
                     </div>
 
-                    <CarSilhouette car={candidate} />
+                    <div className="car-card-visual">
+                      <CarSilhouette car={candidate} />
+                      <img
+                        className="car-card-photo"
+                        src={`/images/cars/${candidate.id}.png`}
+                        alt=""
+                        loading="lazy"
+                        draggable={false}
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none'
+                          event.currentTarget.parentElement?.classList.add('is-fallback')
+                        }}
+                      />
+                    </div>
 
                     <div className="car-card-name">{candidate.name}</div>
                     <p className="car-tagline">{candidate.tagline}</p>
@@ -206,6 +245,7 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
                       <span>{candidate.mass.toLocaleString('en-US')} kg</span>
                       <span>{candidate.drivetrain}</span>
                       <span>{candidate.seats} seats</span>
+                      <span>{candidate.fuelCapacity} L tank</span>
                     </div>
                   </button>
                 )
@@ -219,16 +259,17 @@ export function SelectView({ audio, muted, onToggleMute, onStart }) {
         </div>
 
         <aside className="configurator">
-          <div className="config-summary" style={{ '--car-color': car.color }}>
+          <div className="config-summary" ref={summaryRef} style={{ '--car-color': car.color }}>
             <div className="summary-top">
               <span className="summary-label">YOUR TAXI</span>
               <span className="summary-class">{car.className}</span>
             </div>
-            <CarPreview3D car={car} />
+            <CarPreview3D key={car.id} car={car} />
             <div className="summary-name">{car.name}</div>
             <div className="summary-line">
               {aspiration.shortName} {engine.name} · {transmission.shortName} · {tyre.shortName} · {car.drivetrain}
             </div>
+            {car.modelCredit && <div className="summary-credit">{car.modelCredit}</div>}
           </div>
 
           <section className="config-section">

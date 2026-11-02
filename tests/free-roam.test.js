@@ -52,8 +52,9 @@ test('Bayview is connected by a long autobahn and an elevated river bridge', () 
   assert.equal(isOnRoad(bayview.x, bayview.z), true)
   assert.ok(surfaceHeightAt(3600, BRIDGE.z) > terrainHeightAt(3600, BRIDGE.z) + 20)
   assert.ok(surfaceSlopeAlong(3120, BRIDGE.z, Math.PI / 2) > 0.01)
-  const rail = resolveCollision(3600, BRIDGE.z + 20, 1.35)
-  assert.ok(rail && rail.z < BRIDGE.z + 20)
+  const railZ = BRIDGE.z + BRIDGE.halfWidth + 2
+  const rail = resolveCollision(3600, railZ, 1.35)
+  assert.ok(rail && rail.z < railZ)
 })
 
 test('mountain roads have grades and city buildings are solid', () => {
