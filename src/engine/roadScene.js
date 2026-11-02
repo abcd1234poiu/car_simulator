@@ -298,7 +298,7 @@ export class RoadScene {
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x91a5b8)
     this.scene.fog = new THREE.Fog(0x91a5b8, 900, 4400)
-    this.camera = new THREE.PerspectiveCamera(56, 1, 0.25, 8500)
+    this.camera = new THREE.PerspectiveCamera(54, 1, 0.25, 8500)
     this.camera.position.set(SPAWN.x, 6 + surfaceHeightAt(SPAWN.x, SPAWN.z), SPAWN.z + 12)
     this.lookTarget = new THREE.Vector3(SPAWN.x, 1, SPAWN.z - 10)
 
@@ -559,20 +559,27 @@ export class RoadScene {
       this.orbitPitch = damp(this.orbitPitch, 0, step, 3.4)
     }
     const cameraYaw = heading + this.orbitYaw
-    const back = 6.2 + speedFactor * 1.3
+    const back = 6.1 + speedFactor * 0.1
     const distance = back * (1 - Math.min(0.2, Math.abs(this.orbitPitch) * 0.16))
     const desiredX = x - Math.sin(cameraYaw) * distance
     const desiredZ = z + Math.cos(cameraYaw) * distance
-    const baseHeight = groundY + 1.7 + speedFactor * 0.5 + this.orbitPitch * 4.2
-    this.camera.position.x = damp(this.camera.position.x, desiredX, step, 6.4)
+    const baseHeight = groundY + 1.7 + speedFactor * 0.2 + this.orbitPitch * 4.2
+    // A fixed follow rate would lag metres behind at high speed and make the
+    // car look tiny. Scale the rate with speed so the chase distance stays
+    // constant while remaining smooth at a standstill.
+    const speedAbs = Math.abs(telemetry?.signedSpeed ?? speed)
+    const followRate = 8 + speedAbs * 2.8
+    this.camera.position.x = damp(this.camera.position.x, desiredX, step, followRate)
     this.camera.position.y = damp(this.camera.position.y,
-      Math.max(surfaceHeightAt(desiredX, desiredZ) + 1.5, baseHeight), step, 6)
-    this.camera.position.z = damp(this.camera.position.z, desiredZ, step, 6.4)
+      Math.max(surfaceHeightAt(desiredX, desiredZ) + 1.5, baseHeight),
+      step, 7 + speedAbs * 0.8)
+    this.camera.position.z = damp(this.camera.position.z, desiredZ, step, followRate)
     const orbitAmount = Math.min(1, Math.abs(this.orbitYaw) / 1.2)
-    const lookAhead = (7 + speedFactor * 6) * (1 - orbitAmount * 0.82) + orbitAmount * 0.8
-    this.lookTarget.x = damp(this.lookTarget.x, x + Math.sin(heading) * lookAhead, step, 7)
+    const lookAhead = (7 + speedFactor * 4) * (1 - orbitAmount * 0.82) + orbitAmount * 0.8
+    const lookRate = 8 + speedAbs * 2.2
+    this.lookTarget.x = damp(this.lookTarget.x, x + Math.sin(heading) * lookAhead, step, lookRate)
     this.lookTarget.y = damp(this.lookTarget.y, groundY + 0.85, step, 7)
-    this.lookTarget.z = damp(this.lookTarget.z, z - Math.cos(heading) * lookAhead, step, 7)
+    this.lookTarget.z = damp(this.lookTarget.z, z - Math.cos(heading) * lookAhead, step, lookRate)
     this.camera.lookAt(this.lookTarget)
     this.updateExhaustFlashes(step)
     this.renderer.render(this.scene, this.camera)
